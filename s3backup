@@ -1,0 +1,210 @@
+#!/usr/bin/env python
+
+import boto
+from boto.s3.connection import OrdinaryCallingFormat
+import dateutil.parser
+import json
+from multiprocessing import Pool
+from optparse import OptionParser
+import os
+from pybloom import ScalableBloomFilter  # https://github.com/jaybaird/python-bloomfilter
+import sys
+import time
+
+KEY_METADATA_ATTRS = {
+    'cache_control': 'Cache-Control',
+    'content_disposition': 'Content-Disposition',
+    'content_encoding': 'Content-Encoding',
+    'content_language': 'Content-Language',
+    'content_type': 'Content-Type',
+    'etag': 'ETag',
+    'last_modified': 'Last-Modified',
+}
+
+def connect():
+    return boto.connect_s3(host='storage.cmusatyalab.org',
+            calling_format=OrdinaryCallingFormat())
+
+
+def add_type_code(path, code):
+    return path + '_' + code
+
+
+def split_type_code(path):
+    if path[-2] != '_':
+        raise ValueError('Path has no type code: %s' % path)
+    return path[:-2], path[-1]
+
+
+def key_name_to_path(root_dir, key_name, type_code):
+    key_name = key_name.encode('utf-8')
+    rel_dirpath, filename = os.path.split(key_name)
+    # Don't rewrite root directory to "_d"
+    if rel_dirpath:
+        rel_dirpath = '/'.join([add_type_code(n, 'd') for n in
+                rel_dirpath.split('/')])
+    filename = add_type_code(filename, type_code)
+    return os.path.join(root_dir, rel_dirpath, filename)
+
+
+def path_to_key_name(root_dir, path):
+    relpath = os.path.relpath(path, root_dir)
+    components_in = relpath.split('/')
+    components_out = []
+    for component in components_in[:-1]:
+        component, code = split_type_code(component)
+        if code != 'd':
+            raise ValueError('Path element missing directory type code: %s' %
+                    component)
+        components_out.append(component)
+    component, _ = split_type_code(components_in[-1])
+    components_out.append(component)
+    return '/'.join(components_out).decode('utf-8')
+
+
+class KeyEnumerator(object):
+    BLOOM_INITIAL_CAPACITY = 1000
+    BLOOM_ERROR_RATE = 0.0001
+
+    def __init__(self, bucket):
+        self._bucket = bucket
+        self._object_set = ScalableBloomFilter(
+                initial_capacity=self.BLOOM_INITIAL_CAPACITY,
+                error_rate=self.BLOOM_ERROR_RATE,
+                mode=ScalableBloomFilter.LARGE_SET_GROWTH)
+        # False positives in the Bloom filter will cause us to fail to
+        # garbage-collect an object.  Salt the Bloom filter to ensure
+        # that we get a different set of false positives on every run.
+        self._bloom_salt = os.urandom(2)
+
+    def __iter__(self):
+        for key in self._bucket.list():
+            self._object_set.add(self._bloom_key(key.name))
+            yield (key.name, key.size, key.last_modified)
+
+    def __contains__(self, key_name):
+        # Only works after iteration completes.  May return false positives.
+        return self._bloom_key(key_name) in self._object_set
+
+    def _bloom_key(self, key_name):
+        return self._bloom_salt + key_name.encode('utf-8')
+
+
+def pool_init(root_dir_, bucket_name):
+    global root_dir, download_bucket
+    root_dir = root_dir_
+    conn = connect()
+    download_bucket = conn.get_bucket(bucket_name)
+
+
+def sync_key(args):
+    key_name, key_size, key_date = args
+    key_time = time.mktime(dateutil.parser.parse(key_date).timetuple())
+    out_data = key_name_to_path(root_dir, key_name, 'k')
+    out_meta = key_name_to_path(root_dir, key_name, 'm')
+    out_acl = key_name_to_path(root_dir, key_name, 'a')
+    out_dir = os.path.dirname(out_data)
+
+    try:
+        st = os.stat(out_data)
+        if st.st_size == key_size and st.st_mtime == key_time:
+            return (None, None)
+    except OSError:
+        pass
+
+    if not os.path.isdir(out_dir):
+        try:
+            os.makedirs(out_dir)
+        except OSError:
+            # Either we lost the race with other threads, or we failed for
+            # other reasons.  In the latter case, writing the data will fail.
+            pass
+
+    key = download_bucket.get_key(key_name)
+    with open(out_data, 'wb') as fh:
+        key.get_contents_to_file(fh)
+    with open(out_meta, 'wb') as fh:
+        metadata = {
+            'metadata': key.metadata,
+        }
+        for attr, name in KEY_METADATA_ATTRS.items():
+            value = getattr(key, attr, None)
+            if value:
+                metadata[name] = value
+        json.dump(metadata, fh, sort_keys=True)
+    with open(out_acl, 'wb') as fh:
+        fh.write(key.get_xml_acl())
+    os.utime(out_data, (key_time, key_time))
+    os.utime(out_meta, (key_time, key_time))
+    # Don't utimes out_acl, since the Last-Modified time doesn't apply to it
+    return (key_name, key_size)
+
+
+def sync_bucket(bucket_name, root_dir, workers, verbose):
+    # Connect
+    conn = connect()
+    bucket = conn.get_bucket(bucket_name)
+
+    # Create root directory
+    if not os.path.exists(root_dir):
+        os.makedirs(root_dir)
+
+    # Keys
+    pool = Pool(workers, pool_init, [root_dir, bucket_name])
+    keys = KeyEnumerator(bucket)
+    for path, size in pool.imap_unordered(sync_key, keys):
+        if verbose and path:
+            print path, size
+    pool.close()
+    pool.join()
+
+    # Bucket metadata
+    bucket_acl_path = key_name_to_path(root_dir, 'bucket', 'A')
+    with open(bucket_acl_path, 'wb') as fh:
+        fh.write(bucket.get_xml_acl())
+
+    # Collect garbage
+    for dirpath, _, filenames in os.walk(root_dir, topdown=False):
+        for filename in filenames:
+            filepath = os.path.join(dirpath, filename)
+            try:
+                _, code = split_type_code(filepath)
+            except ValueError:
+                # Delete files without type codes
+                delete = True
+            else:
+                if code == 'A':
+                    # Bucket ACL
+                    delete = False
+                else:
+                    key_name = path_to_key_name(root_dir, filepath)
+                    delete = key_name not in keys
+            if delete:
+                if verbose:
+                    print 'Deleting', filepath
+                try:
+                    os.unlink(filepath)
+                except OSError:
+                    pass
+        try:
+            os.rmdir(dirpath)
+        except OSError:
+            # Directory not empty
+            pass
+
+
+if __name__ == '__main__':
+    parser = OptionParser(usage='Usage: %prog [options] <bucket> <out_dir>')
+    parser.add_option('-j', '--jobs', metavar='COUNT', dest='workers',
+                type='int', default=4,
+                help='number of worker processes to start [4]')
+    parser.add_option('-v', '--verbose', dest='verbose', action='store_true',
+                help='show progress')
+
+    (opts, args) = parser.parse_args()
+    try:
+        bucket, root_dir = args[0:2]
+    except ValueError:
+        parser.error('Missing argument')
+
+    sync_bucket(bucket, root_dir, workers=opts.workers, verbose=opts.verbose)
