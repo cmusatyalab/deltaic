@@ -11,6 +11,9 @@ from pybloom import ScalableBloomFilter  # https://github.com/jaybaird/python-bl
 import sys
 import time
 
+S3_HOST = 'storage.satyalab'
+S3_SECURE = False
+
 KEY_METADATA_ATTRS = {
     'cache_control': 'Cache-Control',
     'content_disposition': 'Content-Disposition',
@@ -22,7 +25,7 @@ KEY_METADATA_ATTRS = {
 }
 
 def connect():
-    return boto.connect_s3(host='storage.cmusatyalab.org',
+    return boto.connect_s3(host=S3_HOST, is_secure=S3_SECURE,
             calling_format=OrdinaryCallingFormat())
 
 
