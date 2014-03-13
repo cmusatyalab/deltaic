@@ -123,7 +123,7 @@ def sync_key(args):
             # other reasons.  In the latter case, writing the data will fail.
             pass
 
-    key = download_bucket.get_key(key_name)
+    key = download_bucket.new_key(key_name)
     with open(out_data, 'wb') as fh:
         key.get_contents_to_file(fh)
     with open(out_meta, 'wb') as fh:
