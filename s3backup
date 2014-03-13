@@ -24,6 +24,10 @@ KEY_METADATA_ATTRS = {
     'last_modified': 'Last-Modified',
 }
 
+def warn(msg, *args):
+    print >>sys.stderr, msg % args
+
+
 def connect():
     return boto.connect_s3(host=S3_HOST, is_secure=S3_SECURE,
             calling_format=OrdinaryCallingFormat())
@@ -111,7 +115,7 @@ def sync_key(args):
     try:
         st = os.stat(out_data)
         if st.st_size == key_size and st.st_mtime == key_time:
-            return (None, None)
+            return (None, None, None)
     except OSError:
         pass
 
@@ -124,23 +128,34 @@ def sync_key(args):
             pass
 
     key = download_bucket.new_key(key_name)
-    with open(out_data, 'wb') as fh:
-        key.get_contents_to_file(fh)
-    with open(out_meta, 'wb') as fh:
-        metadata = {
-            'metadata': key.metadata,
-        }
-        for attr, name in KEY_METADATA_ATTRS.items():
-            value = getattr(key, attr, None)
-            if value:
-                metadata[name] = value
-        json.dump(metadata, fh, sort_keys=True)
-    with open(out_acl, 'wb') as fh:
-        fh.write(key.get_xml_acl())
-    os.utime(out_data, (key_time, key_time))
-    os.utime(out_meta, (key_time, key_time))
-    # Don't utimes out_acl, since the Last-Modified time doesn't apply to it
-    return (key_name, key_size)
+    try:
+        with open(out_data, 'wb') as fh:
+            key.get_contents_to_file(fh)
+        with open(out_meta, 'wb') as fh:
+            metadata = {
+                'metadata': key.metadata,
+            }
+            for attr, name in KEY_METADATA_ATTRS.items():
+                value = getattr(key, attr, None)
+                if value:
+                    metadata[name] = value
+            json.dump(metadata, fh, sort_keys=True)
+        with open(out_acl, 'wb') as fh:
+            fh.write(key.get_xml_acl())
+        os.utime(out_data, (key_time, key_time))
+        os.utime(out_meta, (key_time, key_time))
+        # Don't utimes out_acl, since the Last-Modified time doesn't
+        # apply to it
+        return (key_name, key_size, None)
+    except Exception, e:
+        for path in out_data, out_meta, out_acl:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        if isinstance(e, boto.exception.BotoServerError):
+            e = e.error_code
+        return (key_name, key_size, "Couldn't fetch %s: %s" % (key_name, e))
 
 
 def sync_bucket(bucket_name, root_dir, workers, verbose):
@@ -156,8 +171,10 @@ def sync_bucket(bucket_name, root_dir, workers, verbose):
     start_time = time.time()
     pool = Pool(workers, pool_init, [root_dir, bucket_name])
     keys = KeyEnumerator(bucket)
-    for path, size in pool.imap_unordered(sync_key, keys):
-        if verbose and path:
+    for path, size, error in pool.imap_unordered(sync_key, keys):
+        if error:
+            warn(error)
+        elif verbose and path:
             print path, size
     pool.close()
     pool.join()
@@ -168,7 +185,10 @@ def sync_bucket(bucket_name, root_dir, workers, verbose):
         fh.write(bucket.get_xml_acl())
 
     # Collect garbage
-    for dirpath, _, filenames in os.walk(root_dir, topdown=False):
+    def handle_err(err):
+        warn("Couldn't list directory: %s", err)
+    for dirpath, _, filenames in os.walk(root_dir, topdown=False,
+            onerror=handle_err):
         for filename in filenames:
             filepath = os.path.join(dirpath, filename)
             try:
@@ -186,15 +206,15 @@ def sync_bucket(bucket_name, root_dir, workers, verbose):
                     if delete and os.stat(filepath).st_mtime > start_time:
                         # Probably a failure to non-destructively encode the
                         # key name in the filesystem path.
-                        print >>sys.stderr, ('Warning: Deleting file that '
-                                'we just created: ' + filepath)
+                        warn('Warning: Deleting file that we just created: %s',
+                                filepath)
             if delete:
                 if verbose:
                     print 'Deleting', filepath
                 try:
                     os.unlink(filepath)
-                except OSError:
-                    pass
+                except OSError, e:
+                    warn("Couldn't unlink: %s", e)
         try:
             os.rmdir(dirpath)
         except OSError:
