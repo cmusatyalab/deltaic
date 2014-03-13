@@ -115,7 +115,7 @@ def sync_key(args):
     try:
         st = os.stat(out_data)
         if st.st_size == key_size and st.st_mtime == key_time:
-            return (None, None, None)
+            return (None, None)
     except OSError:
         pass
 
@@ -146,7 +146,7 @@ def sync_key(args):
         os.utime(out_meta, (key_time, key_time))
         # Don't utimes out_acl, since the Last-Modified time doesn't
         # apply to it
-        return (key_name, key_size, None)
+        return (key_name, None)
     except Exception, e:
         for path in out_data, out_meta, out_acl:
             try:
@@ -155,7 +155,7 @@ def sync_key(args):
                 pass
         if isinstance(e, boto.exception.BotoServerError):
             e = e.error_code
-        return (key_name, key_size, "Couldn't fetch %s: %s" % (key_name, e))
+        return (key_name, "Couldn't fetch %s: %s" % (key_name, e))
 
 
 def sync_bucket(bucket_name, root_dir, workers, verbose):
@@ -171,11 +171,11 @@ def sync_bucket(bucket_name, root_dir, workers, verbose):
     start_time = time.time()
     pool = Pool(workers, pool_init, [root_dir, bucket_name])
     keys = KeyEnumerator(bucket)
-    for path, size, error in pool.imap_unordered(sync_key, keys):
+    for path, error in pool.imap_unordered(sync_key, keys):
         if error:
             warn(error)
         elif verbose and path:
-            print path, size
+            print path
     pool.close()
     pool.join()
 
