@@ -153,6 +153,7 @@ def sync_bucket(bucket_name, root_dir, workers, verbose):
         os.makedirs(root_dir)
 
     # Keys
+    start_time = time.time()
     pool = Pool(workers, pool_init, [root_dir, bucket_name])
     keys = KeyEnumerator(bucket)
     for path, size in pool.imap_unordered(sync_key, keys):
@@ -182,6 +183,11 @@ def sync_bucket(bucket_name, root_dir, workers, verbose):
                 else:
                     key_name = path_to_key_name(root_dir, filepath)
                     delete = key_name not in keys
+                    if delete and os.stat(filepath).st_mtime > start_time:
+                        # Probably a failure to non-destructively encode the
+                        # key name in the filesystem path.
+                        print >>sys.stderr, ('Warning: Deleting file that '
+                                'we just created: ' + filepath)
             if delete:
                 if verbose:
                     print 'Deleting', filepath
