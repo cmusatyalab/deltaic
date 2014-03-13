@@ -97,9 +97,10 @@ class KeyEnumerator(object):
         return self._bloom_salt + key_name.encode('utf-8')
 
 
-def pool_init(root_dir_, bucket_name):
-    global root_dir, download_bucket
+def pool_init(root_dir_, bucket_name, force_acls_):
+    global root_dir, download_bucket, force_acls
     root_dir = root_dir_
+    force_acls = force_acls_
     conn = connect()
     download_bucket = conn.get_bucket(bucket_name)
 
@@ -114,10 +115,12 @@ def sync_key(args):
 
     try:
         st = os.stat(out_data)
-        if st.st_size == key_size and st.st_mtime == key_time:
-            return (None, None)
+        need_update = st.st_size != key_size or st.st_mtime != key_time
     except OSError:
-        pass
+        need_update = True
+
+    if not need_update and not force_acls:
+        return (None, None)
 
     if not os.path.isdir(out_dir):
         try:
@@ -129,23 +132,25 @@ def sync_key(args):
 
     key = download_bucket.new_key(key_name)
     try:
-        with open(out_data, 'wb') as fh:
-            key.get_contents_to_file(fh)
-        with open(out_meta, 'wb') as fh:
-            metadata = {
-                'metadata': key.metadata,
-            }
-            for attr, name in KEY_METADATA_ATTRS.items():
-                value = getattr(key, attr, None)
-                if value:
-                    metadata[name] = value
-            json.dump(metadata, fh, sort_keys=True)
+        if need_update:
+            with open(out_data, 'wb') as fh:
+                key.get_contents_to_file(fh)
+            with open(out_meta, 'wb') as fh:
+                metadata = {
+                    'metadata': key.metadata,
+                }
+                for attr, name in KEY_METADATA_ATTRS.items():
+                    value = getattr(key, attr, None)
+                    if value:
+                        metadata[name] = value
+                json.dump(metadata, fh, sort_keys=True)
         with open(out_acl, 'wb') as fh:
             fh.write(key.get_xml_acl())
-        os.utime(out_data, (key_time, key_time))
-        os.utime(out_meta, (key_time, key_time))
-        # Don't utimes out_acl, since the Last-Modified time doesn't
-        # apply to it
+        if need_update:
+            os.utime(out_data, (key_time, key_time))
+            os.utime(out_meta, (key_time, key_time))
+            # Don't utimes out_acl, since the Last-Modified time doesn't
+            # apply to it
         return (key_name, None)
     except Exception, e:
         for path in out_data, out_meta, out_acl:
@@ -158,7 +163,7 @@ def sync_key(args):
         return (key_name, "Couldn't fetch %s: %s" % (key_name, e))
 
 
-def sync_bucket(bucket_name, root_dir, workers, verbose):
+def sync_bucket(bucket_name, root_dir, workers, verbose, force_acls):
     # Connect
     conn = connect()
     bucket = conn.get_bucket(bucket_name)
@@ -169,7 +174,7 @@ def sync_bucket(bucket_name, root_dir, workers, verbose):
 
     # Keys
     start_time = time.time()
-    pool = Pool(workers, pool_init, [root_dir, bucket_name])
+    pool = Pool(workers, pool_init, [root_dir, bucket_name, force_acls])
     keys = KeyEnumerator(bucket)
     for path, error in pool.imap_unordered(sync_key, keys):
         if error:
@@ -224,6 +229,9 @@ def sync_bucket(bucket_name, root_dir, workers, verbose):
 
 if __name__ == '__main__':
     parser = OptionParser(usage='Usage: %prog [options] <bucket> <out_dir>')
+    parser.add_option('-A', '--force-acls', dest='force_acls',
+                action='store_true',
+                help='update ACLs for unmodified keys')
     parser.add_option('-j', '--jobs', metavar='COUNT', dest='workers',
                 type='int', default=4,
                 help='number of worker processes to start [4]')
@@ -236,4 +244,5 @@ if __name__ == '__main__':
     except ValueError:
         parser.error('Missing argument')
 
-    sync_bucket(bucket, root_dir, workers=opts.workers, verbose=opts.verbose)
+    sync_bucket(bucket, root_dir, workers=opts.workers, verbose=opts.verbose,
+            force_acls=opts.force_acls)
