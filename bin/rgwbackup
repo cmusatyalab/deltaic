@@ -8,6 +8,7 @@ from multiprocessing import Pool
 from optparse import OptionParser
 import os
 from pybloom import ScalableBloomFilter  # https://github.com/jaybaird/python-bloomfilter
+import subprocess
 import sys
 import time
 
@@ -28,8 +29,27 @@ def warn(msg, *args):
     print >>sys.stderr, msg % args
 
 
-def connect():
+def radosgw_admin(*args):
+    proc = subprocess.Popen(['radosgw-admin', '--format=json'] +
+            list(args), stdout=subprocess.PIPE)
+    out, _ = proc.communicate()
+    if proc.returncode:
+        raise Exception('radosgw-admin returned %d' % proc.returncode)
+    return json.loads(out)
+
+
+def get_bucket_credentials(bucket_name):
+    info = radosgw_admin('bucket', 'stats', '--bucket', bucket_name)
+    owner = info['owner']
+
+    info = radosgw_admin('user', 'info', '--uid', owner)
+    creds = info['keys'][0]
+    return creds['access_key'], creds['secret_key']
+
+
+def connect(access_key, secret_key):
     return boto.connect_s3(host=S3_HOST, is_secure=S3_SECURE,
+            aws_access_key_id=access_key, aws_secret_access_key=secret_key,
             calling_format=OrdinaryCallingFormat())
 
 
@@ -97,11 +117,11 @@ class KeyEnumerator(object):
         return self._bloom_salt + key_name.encode('utf-8')
 
 
-def pool_init(root_dir_, bucket_name, force_acls_):
+def pool_init(root_dir_, bucket_name, access_key, secret_key, force_acls_):
     global root_dir, download_bucket, force_acls
     root_dir = root_dir_
     force_acls = force_acls_
-    conn = connect()
+    conn = connect(access_key, secret_key)
     download_bucket = conn.get_bucket(bucket_name)
 
 
@@ -165,7 +185,8 @@ def sync_key(args):
 
 def sync_bucket(bucket_name, root_dir, workers, verbose, force_acls):
     # Connect
-    conn = connect()
+    access_key, secret_key = get_bucket_credentials(bucket_name)
+    conn = connect(access_key, secret_key)
     bucket = conn.get_bucket(bucket_name)
 
     # Create root directory
@@ -174,7 +195,8 @@ def sync_bucket(bucket_name, root_dir, workers, verbose, force_acls):
 
     # Keys
     start_time = time.time()
-    pool = Pool(workers, pool_init, [root_dir, bucket_name, force_acls])
+    pool = Pool(workers, pool_init, [root_dir, bucket_name, access_key,
+            secret_key, force_acls])
     keys = KeyEnumerator(bucket)
     for path, error in pool.imap_unordered(sync_key, keys):
         if error:
