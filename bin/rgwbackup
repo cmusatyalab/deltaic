@@ -12,9 +12,6 @@ import subprocess
 import sys
 import time
 
-S3_HOST = 'storage.satyalab'
-S3_SECURE = False
-
 KEY_METADATA_ATTRS = {
     'cache_control': 'Cache-Control',
     'content_disposition': 'Content-Disposition',
@@ -47,8 +44,8 @@ def get_bucket_credentials(bucket_name):
     return creds['access_key'], creds['secret_key']
 
 
-def connect(access_key, secret_key):
-    return boto.connect_s3(host=S3_HOST, is_secure=S3_SECURE,
+def connect(server, access_key, secret_key, secure=False):
+    return boto.connect_s3(host=server, is_secure=secure,
             aws_access_key_id=access_key, aws_secret_access_key=secret_key,
             calling_format=OrdinaryCallingFormat())
 
@@ -117,11 +114,12 @@ class KeyEnumerator(object):
         return self._bloom_salt + key_name.encode('utf-8')
 
 
-def pool_init(root_dir_, bucket_name, access_key, secret_key, force_acls_):
+def pool_init(root_dir_, server, bucket_name, access_key, secret_key, secure,
+        force_acls_):
     global root_dir, download_bucket, force_acls
     root_dir = root_dir_
     force_acls = force_acls_
-    conn = connect(access_key, secret_key)
+    conn = connect(server, access_key, secret_key, secure=secure)
     download_bucket = conn.get_bucket(bucket_name)
 
 
@@ -183,10 +181,11 @@ def sync_key(args):
         return (key_name, "Couldn't fetch %s: %s" % (key_name, e))
 
 
-def sync_bucket(bucket_name, root_dir, workers, verbose, force_acls):
+def sync_bucket(server, bucket_name, root_dir, workers, verbose, force_acls,
+        secure):
     # Connect
     access_key, secret_key = get_bucket_credentials(bucket_name)
-    conn = connect(access_key, secret_key)
+    conn = connect(server, access_key, secret_key, secure=secure)
     bucket = conn.get_bucket(bucket_name)
 
     # Create root directory
@@ -195,8 +194,8 @@ def sync_bucket(bucket_name, root_dir, workers, verbose, force_acls):
 
     # Keys
     start_time = time.time()
-    pool = Pool(workers, pool_init, [root_dir, bucket_name, access_key,
-            secret_key, force_acls])
+    pool = Pool(workers, pool_init, [root_dir, server, bucket_name,
+            access_key, secret_key, secure, force_acls])
     keys = KeyEnumerator(bucket)
     for path, error in pool.imap_unordered(sync_key, keys):
         if error:
@@ -250,21 +249,25 @@ def sync_bucket(bucket_name, root_dir, workers, verbose, force_acls):
 
 
 if __name__ == '__main__':
-    parser = OptionParser(usage='Usage: %prog [options] <bucket> <out_dir>')
+    parser = OptionParser(usage='Usage: %prog [options] <server> <bucket> <out_dir>')
     parser.add_option('-A', '--force-acls', dest='force_acls',
                 action='store_true',
                 help='update ACLs for unmodified keys')
     parser.add_option('-j', '--jobs', metavar='COUNT', dest='workers',
                 type='int', default=4,
                 help='number of worker processes to start [4]')
+    parser.add_option('-s', '--secure', dest='secure', action='store_true',
+                default=False,
+                help='connect securely')
     parser.add_option('-v', '--verbose', dest='verbose', action='store_true',
                 help='show progress')
 
     (opts, args) = parser.parse_args()
     try:
-        bucket, root_dir = args[0:2]
+        server, bucket, root_dir = args[0:3]
     except ValueError:
         parser.error('Missing argument')
 
-    sync_bucket(bucket, root_dir, workers=opts.workers, verbose=opts.verbose,
-            force_acls=opts.force_acls)
+    sync_bucket(server, bucket, root_dir, workers=opts.workers,
+            verbose=opts.verbose, force_acls=opts.force_acls,
+            secure=opts.secure)
