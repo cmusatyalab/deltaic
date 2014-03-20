@@ -1,0 +1,119 @@
+#!/usr/bin/env python
+
+import json
+from optparse import OptionParser
+import os
+import subprocess
+import sys
+import uuid
+
+BLOCKSIZE = 256 << 10
+
+def rbd_exec(pool, cmd, *args):
+    cmdline = ['rbd', cmd] + list(args) + ['-p', pool]
+    print ' '.join(cmdline)
+    subprocess.check_call(cmdline)
+
+
+def rbd_pool_info(pool):
+    proc = subprocess.Popen(['rbd', 'ls', '-l', '-p', pool, '--format=json'],
+            stdout=subprocess.PIPE)
+    out, _ = proc.communicate()
+    if proc.returncode:
+        raise Exception('rbd ls -l returned %d' % proc.returncode)
+    return json.loads(out)
+
+
+def make_name(type):
+    return 'backup-%s-%s' % (type, uuid.uuid1())
+
+
+def _sync_image_to_file(pool, image, path):
+    cmd = ['rbd', 'export', '--no-progress', '-p', pool, image, '-']
+    print ' '.join(cmd)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+
+    # Update in place to avoid LVM snapshot COW
+    off = 0
+    zero = '\0' * BLOCKSIZE
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0666)
+    with os.fdopen(fd, 'r+b') as fh:
+        while True:
+            ibuf = proc.stdout.read(BLOCKSIZE)
+            if not ibuf:
+                break
+            count = len(ibuf)
+            obuf = fh.read(count)
+            if not obuf and ibuf == zero[:count]:
+                # Output file at EOF; input block all zeros => sparsify
+                fh.seek(off + count)
+            elif ibuf != obuf:
+                # Write new data
+                fh.seek(off)
+                fh.write(ibuf)
+            off += count
+        fh.truncate(off)
+    if proc.wait():
+        raise Exception('Export returned %d' % proc.returncode)
+
+
+def _store_snapshot(pool, image, snapshot, path):
+    basedir = os.path.dirname(path)
+    if not os.path.exists(basedir):
+        try:
+            os.makedirs(basedir)
+        except OSError:
+            # Lost the race with another process?
+            pass
+
+    temp_image = make_name('image')
+    rbd_exec(pool, 'clone', '-i', image, '--snap', snapshot,
+            '--dest-pool', pool, '--dest', temp_image)
+    try:
+        _sync_image_to_file(pool, temp_image, path)
+    finally:
+        rbd_exec(pool, 'rm', '--no-progress', temp_image)
+
+
+def store_snapshot(pool, snapshot, path):
+    info = rbd_pool_info(pool)
+    for cur in info:
+        if cur.get('snapshot') == snapshot:
+            image = cur['image']
+            break
+    else:
+        raise Exception("Couldn't locate snapshot %s" % snapshot)
+    return _store_snapshot(pool, image, snapshot, path)
+
+
+def store_image(pool, image, path):
+    temp_snapshot = make_name('snapshot')
+    rbd_exec(pool, 'snap', 'create', '-i', image, '--snap', temp_snapshot)
+    try:
+        rbd_exec(pool, 'snap', 'protect', '-i', image, '--snap',
+                temp_snapshot)
+        try:
+            _store_snapshot(pool, image, temp_snapshot, path)
+        finally:
+            rbd_exec(pool, 'snap', 'unprotect', '-i', image, '--snap',
+                    temp_snapshot)
+    finally:
+        rbd_exec(pool, 'snap', 'rm', '-i', image, '--snap', temp_snapshot)
+
+
+if __name__ == '__main__':
+    parser = OptionParser(usage='Usage: %prog [options] <pool> <image_or_snapshot_name> <out_path>')
+    parser.add_option('-s', '--snapshot', dest='snapshot',
+            action='store_true',
+            help='requested object is a snapshot')
+
+    (opts, args) = parser.parse_args()
+    try:
+        pool, object_name, out_path = args[0:3]
+    except ValueError:
+        parser.error('Missing argument')
+
+    if opts.snapshot:
+        store_snapshot(pool, object_name, out_path)
+    else:
+        store_image(pool, object_name, out_path)
