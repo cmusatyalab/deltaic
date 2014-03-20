@@ -1,0 +1,27 @@
+settings:
+  root: /srv/backup
+  backup-lv: backups/current
+  rgw-server: storage.example.org
+  rgw-secure: false
+  rsync-exclude:
+    - /tmp/*
+    - /var/tmp/*
+machines:
+  host1.example.org:
+    mounts: [/, /boot]
+  host2.example.org:
+    mounts: [/]
+    pre: /usr/local/bin/database_snapshot --create
+    post: /usr/local/bin/database_snapshot --delete
+    exclude:
+      - /var/lib/mysql/*
+buckets:
+  - bucket1
+  - bucket2
+images:
+  pool-1:
+    foo-data: volume-be220107-966d-4253-93c7-d33cdfe18166
+    bar: volume-64c39781-8c86-433b-9952-82200bb476a6
+snapshots:
+  pool-1:
+    foo-data-20140301: snapshot-d023e06a-15c2-4c9f-953c-7d22b2fb5b39
