@@ -86,6 +86,17 @@ def path_to_key_name(root_dir, path):
     return '/'.join(components_out).decode('utf-8')
 
 
+def update_file(path, data):
+    # Avoid unnecessary LVM COW by only updating the file if its data has
+    # changed
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0666)
+    with os.fdopen(fd, 'r+b') as fh:
+        if fh.read() != data:
+            fh.seek(0)
+            fh.write(data)
+            fh.truncate()
+
+
 class KeyEnumerator(object):
     BLOOM_INITIAL_CAPACITY = 1000
     BLOOM_ERROR_RATE = 0.0001
@@ -153,17 +164,15 @@ def sync_key(args):
         if need_update:
             with open(out_data, 'wb') as fh:
                 key.get_contents_to_file(fh)
-            with open(out_meta, 'wb') as fh:
-                metadata = {
-                    'metadata': key.metadata,
-                }
-                for attr, name in KEY_METADATA_ATTRS.items():
-                    value = getattr(key, attr, None)
-                    if value:
-                        metadata[name] = value
-                json.dump(metadata, fh, sort_keys=True)
-        with open(out_acl, 'wb') as fh:
-            fh.write(key.get_xml_acl())
+            metadata = {
+                'metadata': key.metadata,
+            }
+            for attr, name in KEY_METADATA_ATTRS.items():
+                value = getattr(key, attr, None)
+                if value:
+                    metadata[name] = value
+            update_file(out_meta, json.dumps(metadata, sort_keys=True))
+        update_file(out_acl, key.get_xml_acl())
         if need_update:
             os.utime(out_data, (key_time, key_time))
             os.utime(out_meta, (key_time, key_time))
@@ -206,9 +215,8 @@ def sync_bucket(server, bucket_name, root_dir, workers, verbose, force_acls,
     pool.join()
 
     # Bucket metadata
-    bucket_acl_path = key_name_to_path(root_dir, 'bucket', 'A')
-    with open(bucket_acl_path, 'wb') as fh:
-        fh.write(bucket.get_xml_acl())
+    update_file(key_name_to_path(root_dir, 'bucket', 'A'),
+            bucket.get_xml_acl())
 
     # Collect garbage
     def handle_err(err):
