@@ -5,6 +5,13 @@ import os
 import subprocess
 import sys
 
+def remote_command(host, command):
+    args = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no',
+            'root@%s' % host, command]
+    print ' '.join(args)
+    subprocess.check_call(args)
+
+
 def sync_host(host, root_dir, mounts, exclude=(), verbose=False):
     args = ['rsync', '-aHAXRx', '--fake-super', '--delete',
             '--delete-excluded', '--numeric-ids', '--stats', '--partial',
@@ -26,6 +33,10 @@ if __name__ == '__main__':
     parser = OptionParser(usage='Usage: %prog [options] <host> <out_dir>')
     parser.add_option('-m', '--mount', dest='mounts', action='append',
             help='filesystem mount point to copy (can be repeated)')
+    parser.add_option('--pre', dest='pre_cmd',
+            help='command to run on remote side before backup')
+    parser.add_option('--post', dest='post_cmd',
+            help='command to run on remote side after backup')
     parser.add_option('-v', '--verbose', dest='verbose', action='store_true',
             help='show progress')
     parser.add_option('-x', '--exclude', dest='exclude', action='append',
@@ -38,4 +49,8 @@ if __name__ == '__main__':
     except ValueError:
         parser.error('Missing argument')
 
+    if opts.pre_cmd:
+        remote_command(host, opts.pre_cmd)
     sync_host(host, root_dir, opts.mounts, opts.exclude, verbose=opts.verbose)
+    if opts.post_cmd:
+        remote_command(host, opts.post_cmd)
