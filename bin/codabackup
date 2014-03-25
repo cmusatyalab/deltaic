@@ -10,9 +10,9 @@ import subprocess
 import tarfile
 import xattr
 
+ATTR_INCREMENTAL = 'user.coda.incremental-ok'
 ATTR_MODE = 'user.coda.mode'
 ATTR_UID = 'user.coda.uid'
-ATTR_VALID = 'user.coda.valid'
 BLOCKSIZE = 256 << 10
 
 class BloomSet(object):
@@ -235,9 +235,15 @@ def sync_backup_volume(host, volume, root_dir, incremental=False, verbose=0):
     if not os.path.exists(root_dir):
         os.makedirs(root_dir)
 
-    # Force full backup if we haven't had a successful one yet
+    # Force a full backup unless the root_dir is marked incremental-ok.
+    # This ensures that the first backup is a full.  Remove incremental-ok
+    # attr when a full backup is requested, to ensure that full-backup
+    # failures are reproducible in the next backup run.
     root_xattrs = xattr.xattr(root_dir, xattr.XATTR_NOFOLLOW)
-    if ATTR_VALID not in root_xattrs:
+    incremental_ok = ATTR_INCREMENTAL in root_xattrs
+    if incremental_ok and not incremental:
+        del root_xattrs[ATTR_INCREMENTAL]
+    elif not incremental_ok:
         incremental = False
 
     _, backup_id = get_volume_ids(host, volume, verbose)
@@ -265,7 +271,7 @@ def sync_backup_volume(host, volume, root_dir, incremental=False, verbose=0):
 
     subprocess.check_call(volutil_cmd(host, 'ancient', [backup_id], verbose),
             stderr=get_err_stream(verbose))
-    update_xattr(root_xattrs, ATTR_VALID, '')
+    update_xattr(root_xattrs, ATTR_INCREMENTAL, '')
 
 
 if __name__ == '__main__':
