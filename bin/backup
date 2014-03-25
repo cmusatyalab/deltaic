@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from datetime import date
-from itertools import chain, cycle, islice
+from itertools import chain
 from optparse import OptionParser
 import os
 import Queue
@@ -18,25 +18,46 @@ RGWBACKUP = os.path.join(PROGDIR, 'rgwbackup')
 RSYNCBACKUP = os.path.join(PROGDIR, 'rsyncbackup')
 
 
-def roundrobin(*iterables):
-    "roundrobin('ABC', 'D', 'EF') --> A D E B F C"
-    # Recipe credited to George Sakkis
-    # Taken verbatim from the itertools documentation.
-    pending = len(iterables)
-    nexts = cycle(iter(it).next for it in iterables)
-    while pending:
-        try:
-            for next in nexts:
-                yield next()
-        except StopIteration:
-            pending -= 1
-            nexts = cycle(islice(nexts, pending))
-
-
 class Task(object):
     def run(self):
         print ' '.join(self.command)
         subprocess.check_call(self.command, close_fds=True)
+
+
+class Source(object):
+    def __init__(self, config):
+        self._settings = config.get('settings', {})
+        self._manifest = config.get(self.LABEL, {})
+        self._queue = Queue.Queue()
+        self._thread_count = self._settings.get('%s-workers' % self.LABEL, 1)
+        self._threads = []
+
+    @classmethod
+    def get_sources(cls):
+        sources = {}
+        for subclass in cls.__subclasses__():
+            if hasattr(subclass, 'LABEL'):
+                sources[subclass.LABEL] = subclass
+        return sources
+
+    def start(self):
+        for n in range(self._thread_count):
+            thread = Thread(target=self._worker)
+            thread.start()
+            self._threads.append(thread)
+
+    def _worker(self):
+        while True:
+            try:
+                task = self._queue.get_nowait()
+            except Queue.Empty:
+                return
+            task.run()
+
+    def wait(self):
+        for thread in self._threads:
+            thread.join()
+        self._threads = []
 
 
 class BucketTask(Task):
@@ -49,6 +70,16 @@ class BucketTask(Task):
             self.command.append('-s')
         if force_s3_acls:
             self.command.append('-A')
+
+
+class RGWSource(Source):
+    LABEL = 'rgw'
+
+    def __init__(self, config, options):
+        Source.__init__(self, config)
+        for name in self._manifest:
+            self._queue.put(BucketTask(self._settings, name,
+                    force_s3_acls='rgw-force-acls' in options))
 
 
 class ImageTask(Task):
@@ -69,7 +100,22 @@ class SnapshotTask(ImageTask):
         self.command.append('-s')
 
 
-class MachineTask(Task):
+class RBDSource(Source):
+    LABEL = 'rbd'
+
+    def __init__(self, config, options):
+        Source.__init__(self, config)
+        for pool, info in self._manifest.get('images', {}).items():
+            for friendly_name, name in info.items():
+                self._queue.put(ImageTask(self._settings, pool, name,
+                        friendly_name))
+        for pool, info in self._manifest.get('snapshots', {}).items():
+            for friendly_name, name in info.items():
+                self._queue.put(SnapshotTask(self._settings, pool, name,
+                        friendly_name))
+
+
+class RsyncTask(Task):
     def __init__(self, settings, hostname, info):
         Task.__init__(self)
         out_path = os.path.join(settings['root'], 'machines',
@@ -86,6 +132,15 @@ class MachineTask(Task):
             self.command.extend(['--post', info['post']])
 
 
+class RsyncSource(Source):
+    LABEL = 'rsync'
+
+    def __init__(self, config, options):
+        Source.__init__(self, config)
+        for hostname, info in self._manifest.items():
+            self._queue.put(RsyncTask(self._settings, hostname, info))
+
+
 class CodaTask(Task):
     def __init__(self, settings, server, volume):
         Task.__init__(self)
@@ -97,61 +152,26 @@ class CodaTask(Task):
             self.command.append('-i')
 
 
-class TaskList(object):
-    def __init__(self, config, buckets=False, images=False,
-            machines=False, coda=False, force_s3_acls=False):
-        machine_tasks = []
-        if machines:
-            for hostname, info in config.get('machines', {}).items():
-                machine_tasks.append(MachineTask(settings, hostname, info))
+class CodaSource(Source):
+    LABEL = 'coda'
 
-        bucket_tasks = []
-        if buckets:
-            for name in config.get('buckets', []):
-                bucket_tasks.append(BucketTask(settings, name,
-                        force_s3_acls=force_s3_acls))
+    def __init__(self, config, options):
+        Source.__init__(self, config)
+        for group in self._manifest:
+            for volume in group['volumes']:
+                for server in group['servers']:
+                    self._queue.put(CodaTask(self._settings, server, volume))
 
-        image_tasks = []
-        if images:
-            for pool, info in config.get('images', {}).items():
-                for friendly_name, name in info.items():
-                    image_tasks.append(ImageTask(settings, pool, name,
-                            friendly_name))
-            for pool, info in config.get('snapshots', {}).items():
-                for friendly_name, name in info.items():
-                    image_tasks.append(SnapshotTask(settings, pool, name,
-                            friendly_name))
 
-        coda_tasks = []
-        if coda:
-            for group in config.get('coda', []):
-                for volume in group['volumes']:
-                    for server in group['servers']:
-                        coda_tasks.append(CodaTask(settings, server, volume))
-
-        # Try to interleave access to different types of systems
-        self._tasks = list(roundrobin(machine_tasks, bucket_tasks,
-                image_tasks, coda_tasks))
-
-    def run(self, thread_count=4):
-        queue = Queue.Queue()
-        for task in self._tasks:
-            queue.put(task)
-
-        threads = [Thread(target=self._worker, args=[queue])
-                for n in range(thread_count)]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-
-    def _worker(self, queue):
-        while True:
-            try:
-                task = queue.get_nowait()
-            except Queue.Empty:
-                return
-            task.run()
+def run_tasks(config, options, source_names):
+    source_map = Source.get_sources()
+    sources = []
+    for name in source_names:
+        source = source_map[name](config, options)
+        source.start()
+        sources.append(source)
+    for source in sources:
+        source.wait()
 
 
 def create_snapshot(settings):
@@ -174,21 +194,16 @@ def create_snapshot(settings):
 
 if __name__ == '__main__':
     parser = OptionParser(usage='Usage: %prog [options] <config_path>')
-    parser.add_option('-j', '--jobs', dest='thread_count', type=int, default=4,
-            help='number of backups to run in parallel [4]')
-    parser.add_option('-b', '--buckets', dest='buckets', action='store_true',
-            help='dump buckets')
-    parser.add_option('-A', '--force-s3-acls', dest='force_s3_acls',
-            action='store_true',
-            help='update ACLs for unmodified S3 objects')
-    parser.add_option('-c', '--coda', dest='coda', action='store_true',
-            help='dump Coda volumes')
-    parser.add_option('-i', '--images', dest='images', action='store_true',
-            help='dump images and snapshots')
-    parser.add_option('-m', '--machines', dest='machines', action='store_true',
-            help='dump machines')
-    parser.add_option('-s', '--snapshot', dest='snapshot', action='store_true',
-            help='snapshot backup volume')
+    parser.add_option('-o', '--opt', dest='options', action='append',
+            default=[],
+            help='option string for source drivers')
+    source_list = ', '.join(sorted(Source.get_sources()))
+    parser.add_option('-s', '--source', dest='sources', action='append',
+            default=[],
+            help='backup source to enable (%s)' % source_list)
+    parser.add_option('-S', '--no-snapshot', dest='snapshot',
+            action='store_false', default=True,
+            help='skip snapshot of backup volume')
 
     (opts, args) = parser.parse_args()
     try:
@@ -198,11 +213,7 @@ if __name__ == '__main__':
 
     with open(config_path) as fh:
         config = yaml.safe_load(fh)
-    settings = config['settings']
 
-    tasks = TaskList(config, buckets=opts.buckets, images=opts.images,
-            machines=opts.machines, coda=opts.coda,
-            force_s3_acls=opts.force_s3_acls)
-    tasks.run(opts.thread_count)
+    run_tasks(config, opts.options, opts.sources)
     if opts.snapshot:
-        create_snapshot(settings)
+        create_snapshot(config['settings'])
