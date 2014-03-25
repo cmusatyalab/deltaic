@@ -101,15 +101,15 @@ def update_xattr(attrs, key, value):
         attrs[key] = value
 
 
-def sync_tar(tar, root_dir, remove=False, verbose=0):
+def update_dir_from_tar(tar, root_dir, verbose=0):
     def log(type, path):
         if verbose:
             print type, path
 
     directories = []
-    objects = BloomSet()
+    valid_paths = BloomSet()
     # Root directory is never in the tar file, but always exists
-    objects.add(root_dir)
+    valid_paths.add(root_dir)
     for entry in tar:
         # Check for existing file
         path = build_path(root_dir, entry.name)
@@ -199,7 +199,7 @@ def sync_tar(tar, root_dir, remove=False, verbose=0):
                 os.utime(path, (entry.mtime, entry.mtime))
 
         # Protect from garbage collection
-        objects.add(path)
+        valid_paths.add(path)
 
     # Deferred update of directory mtimes
     for entry in directories:
@@ -207,24 +207,28 @@ def sync_tar(tar, root_dir, remove=False, verbose=0):
         if os.stat(path).st_mtime != entry.mtime:
             os.utime(path, (entry.mtime, entry.mtime))
 
-    # Collect garbage
-    if remove:
-        def handle_err(err):
-            raise err
-        for dirpath, _, filenames in os.walk(root_dir, topdown=False,
-                onerror=handle_err):
-            for filename in filenames:
-                filepath = os.path.join(dirpath, filename)
-                if filepath not in objects:
-                    log('-', filepath)
-                    os.unlink(filepath)
-            if dirpath not in objects:
-                try:
-                    os.rmdir(dirpath)
-                    log('-', dirpath)
-                except OSError:
-                    # Directory not empty
-                    pass
+    return valid_paths
+
+
+def remove_deleted(root_dir, valid_paths, verbose=0):
+    def handle_err(err):
+        raise err
+    for dirpath, _, filenames in os.walk(root_dir, topdown=False,
+            onerror=handle_err):
+        for filename in filenames:
+            filepath = os.path.join(dirpath, filename)
+            if filepath not in valid_paths:
+                if verbose:
+                    print '-', filepath
+                os.unlink(filepath)
+        if dirpath not in valid_paths:
+            try:
+                os.rmdir(dirpath)
+                if verbose:
+                    print '-', dirpath
+            except OSError:
+                # Directory not empty
+                pass
 
 
 def sync_backup_volume(host, volume, root_dir, incremental=False, verbose=0):
@@ -247,15 +251,17 @@ def sync_backup_volume(host, volume, root_dir, incremental=False, verbose=0):
         tar = tarfile.open(fileobj=proc.stdout, mode='r|')
     except tarfile.ReadError, e:
         if str(e) == 'empty header':
-            # Empty volume; pass dummy TarFile to ensure garbage-collection
-            # of existing contents.  It turns out that a list object is a
-            # good enough duck.
-            tar = []
+            # Empty volume
+            valid_paths = set([root_dir])
         else:
             raise
-    sync_tar(tar, root_dir, remove=not incremental, verbose=verbose)
+    else:
+        valid_paths = update_dir_from_tar(tar, root_dir, verbose=verbose)
     if proc.wait():
         raise IOError('Coda dump returned %d' % proc.returncode)
+
+    if not incremental:
+        remove_deleted(root_dir, valid_paths, verbose=verbose)
 
     subprocess.check_call(volutil_cmd(host, 'ancient', [backup_id], verbose),
             stderr=get_err_stream(verbose))
