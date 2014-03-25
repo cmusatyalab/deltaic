@@ -63,7 +63,7 @@ class Source(object):
 class BucketTask(Task):
     def __init__(self, settings, name, force_s3_acls=False):
         Task.__init__(self)
-        out_dir = os.path.join(settings['root'], 'buckets', name)
+        out_dir = os.path.join(settings['root'], 'rgw', name)
         self.command = [sys.executable, RGWBACKUP, '-v',
                 settings['rgw-server'], name, out_dir]
         if settings.get('rgw-secure', False):
@@ -87,7 +87,7 @@ class ImageTask(Task):
 
     def __init__(self, settings, pool, name, friendly_name):
         Task.__init__(self)
-        out_path = os.path.join(settings['root'], 'blockdevs', pool,
+        out_path = os.path.join(settings['root'], 'rbd', pool,
                 self.SECTION, friendly_name)
         self.command = [sys.executable, RBDBACKUP, pool, name, out_path]
 
@@ -118,7 +118,7 @@ class RBDSource(Source):
 class RsyncTask(Task):
     def __init__(self, settings, hostname, info):
         Task.__init__(self)
-        out_path = os.path.join(settings['root'], 'machines',
+        out_path = os.path.join(settings['root'], 'rsync',
                 hostname.split('.')[0])
         self.command = [sys.executable, RSYNCBACKUP, '-v', hostname, out_path]
         for mount in info['mounts']:
