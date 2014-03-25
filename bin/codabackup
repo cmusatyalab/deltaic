@@ -108,6 +108,8 @@ def sync_tar(tar, root_dir, remove=False, verbose=0):
 
     directories = []
     objects = BloomSet()
+    # Root directory is never in the tar file, but always exists
+    objects.add(root_dir)
     for entry in tar:
         # Check for existing file
         path = build_path(root_dir, entry.name)
@@ -241,7 +243,16 @@ def sync_backup_volume(host, volume, root_dir, incremental=False, verbose=0):
     with open('/dev/null', 'r+') as null:
         proc = subprocess.Popen(volutil_cmd(host, 'dump', args, verbose),
                 stdout=subprocess.PIPE, stderr=null)
-    tar = tarfile.open(fileobj=proc.stdout, mode='r|')
+    try:
+        tar = tarfile.open(fileobj=proc.stdout, mode='r|')
+    except tarfile.ReadError, e:
+        if str(e) == 'empty header':
+            # Empty volume; pass dummy TarFile to ensure garbage-collection
+            # of existing contents.  It turns out that a list object is a
+            # good enough duck.
+            tar = []
+        else:
+            raise
     sync_tar(tar, root_dir, remove=not incremental, verbose=verbose)
     if proc.wait():
         raise IOError('Coda dump returned %d' % proc.returncode)
