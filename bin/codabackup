@@ -1,0 +1,278 @@
+#!/usr/bin/env python
+
+from optparse import OptionParser
+import os
+from pybloom import ScalableBloomFilter
+import re
+import shutil
+import stat
+import subprocess
+import tarfile
+import xattr
+
+ATTR_MODE = 'user.coda.mode'
+ATTR_UID = 'user.coda.uid'
+ATTR_VALID = 'user.coda.valid'
+BLOCKSIZE = 256 << 10
+
+class BloomSet(object):
+    BLOOM_INITIAL_CAPACITY = 1000
+    BLOOM_ERROR_RATE = 0.0001
+
+    def __init__(self):
+        self._set = ScalableBloomFilter(
+                initial_capacity=self.BLOOM_INITIAL_CAPACITY,
+                error_rate=self.BLOOM_ERROR_RATE,
+                mode=ScalableBloomFilter.LARGE_SET_GROWTH)
+        # False positives in the Bloom filter will cause us to fail to
+        # garbage-collect an object.  Salt the Bloom filter to ensure
+        # that we get a different set of false positives on every run.
+        self._bloom_salt = os.urandom(2)
+
+    def add(self, name):
+        self._set.add(self._bloom_key(name))
+
+    def __contains__(self, name):
+        # May return false positives.
+        return self._bloom_key(name) in self._set
+
+    def _bloom_key(self, name):
+        return self._bloom_salt + name
+
+
+def volutil_cmd(host, subcommand, args=(), verbose=0):
+    if verbose:
+        print '>', 'volutil', subcommand, ' '.join(args)
+    return ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no',
+            'root@%s' % host, 'volutil', subcommand] + list(args)
+
+
+def get_err_stream(verbose):
+    if verbose >= 2:
+        return None
+    else:
+        return open('/dev/null', 'r+')
+
+
+def get_volume_ids(host, volume, verbose=0):
+    proc = subprocess.Popen(volutil_cmd(host, 'info', [volume], verbose),
+            stdout=subprocess.PIPE, stderr=get_err_stream(verbose))
+    info, _ = proc.communicate()
+    if proc.returncode:
+        raise IOError("Couldn't get volume info for %s" % volume)
+
+    match = re.search('^id = ([0-9a-f]+)', info, re.MULTILINE)
+    if match is None:
+        raise ValueError("Couldn't find volume ID for %s" % volume)
+    volume_id = match.group(1)
+
+    match = re.search(', backupId = ([0-9a-f]+)', info)
+    if match is None:
+        raise ValueError("Couldn't find backup ID for %s" % volume)
+    backup_id = match.group(1)
+
+    return volume_id, backup_id
+
+
+def refresh_backup_volume(host, volume, verbose=0):
+    volume_id, _ = get_volume_ids(host, volume, verbose)
+    subprocess.check_call(volutil_cmd(host, 'lock', [volume_id], verbose),
+            stdout=get_err_stream(verbose),
+            stderr=get_err_stream(verbose))
+    subprocess.check_call(volutil_cmd(host, 'backup', [volume_id], verbose),
+            stdout=get_err_stream(verbose),
+            stderr=get_err_stream(verbose))
+
+
+def build_path(root_dir, path):
+    normalized = os.path.normpath(path)
+    if normalized.startswith('../'):
+        raise ValueError('Attempted directory traversal: %s' % path)
+    # Call normpath again for the case where normalized == '.'
+    return os.path.normpath(os.path.join(root_dir, normalized))
+
+
+def update_xattr(attrs, key, value):
+    try:
+        old_value = attrs[key]
+    except KeyError:
+        old_value = None
+    if old_value != value:
+        attrs[key] = value
+
+
+def sync_tar(tar, root_dir, remove=False, verbose=0):
+    def log(type, path):
+        if verbose:
+            print type, path
+
+    directories = []
+    objects = BloomSet()
+    while True:
+        # Get next entry
+        entry = tar.next()
+        if not entry:
+            break
+        path = build_path(root_dir, entry.name)
+        try:
+            st = os.lstat(path)
+        except OSError:
+            st = None
+
+        # If entry has changed types, remove the old object
+        if st:
+            if entry.type == tarfile.DIRTYPE:
+                new_type = stat.S_IFDIR
+            elif entry.type in (tarfile.REGTYPE, tarfile.LNKTYPE):
+                new_type = stat.S_IFREG
+            elif entry.type == tarfile.SYMTYPE:
+                new_type = stat.S_IFLNK
+            else:
+                raise ValueError('Unexpected file type %d' % entry.type)
+            if stat.S_IFMT(st.st_mode) != new_type:
+                if stat.S_ISDIR(st.st_mode):
+                    shutil.rmtree(path)
+                else:
+                    os.unlink(path)
+                st = None
+
+        # Create parent directory if not present.  Full dumps only include
+        # empty directories; incremental dumps include all directories.
+        dirpath = os.path.dirname(path)
+        if not os.path.exists(dirpath):
+            os.makedirs(dirpath)
+
+        # Create new object
+        if entry.isdir():
+            if not os.path.exists(path):
+                log('d', path)
+                os.mkdir(path)
+            # Go back and set mtime after directory has been populated
+            directories.append(entry)
+        elif entry.isfile():
+            if (not st or entry.size != st.st_size or
+                    entry.mtime != st.st_mtime):
+                log('f', path)
+                if st is not None:
+                    # Break hard links in case links were also broken at the
+                    # source.  codadump2tar always dumps hard links, so we
+                    # will rebuild any links that should still exist.
+                    os.unlink(path)
+                ifh = tar.extractfile(entry)
+                with open(path, 'w+b') as ofh:
+                    while True:
+                        buf = ifh.read(BLOCKSIZE)
+                        if not buf:
+                            break
+                        ofh.write(buf)
+        elif entry.issym():
+            if st is None or os.readlink(path) != entry.linkname:
+                log('s', path)
+                if st is not None:
+                    os.unlink(path)
+                os.symlink(entry.linkname, path)
+        elif entry.islnk():
+            target_path = build_path(root_dir, entry.linkname)
+            target_st = os.lstat(target_path)
+            if (st is None or st.st_dev != target_st.st_dev or
+                    st.st_ino != target_st.st_ino):
+                log('l', path)
+                if st is not None:
+                    os.unlink(path)
+                os.link(target_path, path)
+
+        # Update metadata
+        attrs = xattr.xattr(path, xattr.XATTR_NOFOLLOW)
+        # uid.  Hardlinks were updated with the primary, and we can't set
+        # xattrs on symlinks.
+        if entry.isfile() or entry.isdir():
+            update_xattr(attrs, ATTR_UID, str(entry.uid))
+        # mode.  Directory modes in the dump are not meaningful, hardlinks
+        # were updated with the primary, and we can't set xattrs on
+        # symlinks.
+        if entry.isfile():
+            update_xattr(attrs, ATTR_MODE, oct(entry.mode))
+        # mtime.  Directories will be updated later, hardlinks were updated
+        # with the primary, and Python 2.x doesn't have os.lutimes() for
+        # updating symlinks.
+        if entry.isfile():
+            if os.stat(path).st_mtime != entry.mtime:
+                os.utime(path, (entry.mtime, entry.mtime))
+
+        # Protect from garbage collection
+        objects.add(path)
+
+    # Deferred update of directory mtimes
+    for entry in directories:
+        path = build_path(root_dir, entry.name)
+        if os.stat(path).st_mtime != entry.mtime:
+            os.utime(path, (entry.mtime, entry.mtime))
+
+    # Collect garbage
+    if remove:
+        def handle_err(err):
+            raise err
+        for dirpath, _, filenames in os.walk(root_dir, topdown=False,
+                onerror=handle_err):
+            for filename in filenames:
+                filepath = os.path.join(dirpath, filename)
+                if filepath not in objects:
+                    log('-', filepath)
+                    os.unlink(filepath)
+            if dirpath not in objects:
+                try:
+                    os.rmdir(dirpath)
+                    log('-', dirpath)
+                except OSError:
+                    # Directory not empty
+                    pass
+
+
+def sync_backup_volume(host, volume, root_dir, incremental=False, verbose=0):
+    if not os.path.exists(root_dir):
+        os.makedirs(root_dir)
+
+    # Force full backup if we haven't had a successful one yet
+    root_xattrs = xattr.xattr(root_dir, xattr.XATTR_NOFOLLOW)
+    if ATTR_VALID not in root_xattrs:
+        incremental = False
+
+    _, backup_id = get_volume_ids(host, volume, verbose)
+    args = ['-i', '-1'] if incremental else []
+    args.extend([backup_id, '|', 'codadump2tar', '-v', '-rn', '.'])
+
+    with open('/dev/null', 'r+') as null:
+        proc = subprocess.Popen(volutil_cmd(host, 'dump', args, verbose),
+                stdout=subprocess.PIPE, stderr=null)
+    tar = tarfile.open(fileobj=proc.stdout, mode='r|')
+    sync_tar(tar, root_dir, remove=not incremental, verbose=verbose)
+    if proc.wait():
+        raise IOError('Coda dump returned %d' % proc.returncode)
+
+    subprocess.check_call(volutil_cmd(host, 'ancient', [backup_id], verbose),
+            stderr=get_err_stream(verbose))
+    update_xattr(root_xattrs, ATTR_VALID, '')
+
+
+if __name__ == '__main__':
+    parser = OptionParser(usage='Usage: %prog [options] <host> <volume> <out_dir>')
+    parser.add_option('-i', '--incremental', dest='incremental',
+            action='store_true',
+            help='request incremental backup')
+    parser.add_option('-R', '--skip-refresh', dest='refresh', default=True,
+            action='store_false',
+            help='skip refreshing backup volume')
+    parser.add_option('-v', '--verbose', dest='verbose', action='count',
+            default=0,
+            help='pass once to show activity, twice for volutil output')
+
+    (opts, args) = parser.parse_args()
+    try:
+        host, volume, root_dir = args[0:3]
+    except ValueError:
+        parser.error('Missing argument')
+
+    if opts.refresh:
+        refresh_backup_volume(host, volume, verbose=opts.verbose)
+    sync_backup_volume(host, volume, root_dir, incremental=opts.incremental,
+            verbose=opts.verbose)
