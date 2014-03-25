@@ -5,12 +5,14 @@ from itertools import chain, cycle, islice
 from optparse import OptionParser
 import os
 import Queue
+import random
 import subprocess
 import sys
 from threading import Thread
 import yaml
 
 PROGDIR = os.path.abspath(os.path.dirname(__file__))
+CODABACKUP = os.path.join(PROGDIR, 'codabackup')
 RBDBACKUP = os.path.join(PROGDIR, 'rbdbackup')
 RGWBACKUP = os.path.join(PROGDIR, 'rgwbackup')
 RSYNCBACKUP = os.path.join(PROGDIR, 'rsyncbackup')
@@ -84,9 +86,20 @@ class MachineTask(Task):
             self.command.extend(['--post', info['post']])
 
 
+class CodaTask(Task):
+    def __init__(self, settings, server, volume):
+        Task.__init__(self)
+        out_path = os.path.join(settings['root'], 'coda',
+                server.split('.')[0], volume)
+        self.command = [sys.executable, CODABACKUP, '-v', server, volume,
+                out_path]
+        if random.random() >= settings.get('coda-full-probability', 0.143):
+            self.command.append('-i')
+
+
 class TaskList(object):
     def __init__(self, config, buckets=False, images=False,
-            machines=False, force_s3_acls=False):
+            machines=False, coda=False, force_s3_acls=False):
         machine_tasks = []
         if machines:
             for hostname, info in config.get('machines', {}).items():
@@ -109,9 +122,16 @@ class TaskList(object):
                     image_tasks.append(SnapshotTask(settings, pool, name,
                             friendly_name))
 
+        coda_tasks = []
+        if coda:
+            for group in config.get('coda', []):
+                for volume in group['volumes']:
+                    for server in group['servers']:
+                        coda_tasks.append(CodaTask(settings, server, volume))
+
         # Try to interleave access to different types of systems
         self._tasks = list(roundrobin(machine_tasks, bucket_tasks,
-                image_tasks))
+                image_tasks, coda_tasks))
 
     def run(self, thread_count=4):
         queue = Queue.Queue()
@@ -161,6 +181,8 @@ if __name__ == '__main__':
     parser.add_option('-A', '--force-s3-acls', dest='force_s3_acls',
             action='store_true',
             help='update ACLs for unmodified S3 objects')
+    parser.add_option('-c', '--coda', dest='coda', action='store_true',
+            help='dump Coda volumes')
     parser.add_option('-i', '--images', dest='images', action='store_true',
             help='dump images and snapshots')
     parser.add_option('-m', '--machines', dest='machines', action='store_true',
@@ -179,7 +201,8 @@ if __name__ == '__main__':
     settings = config['settings']
 
     tasks = TaskList(config, buckets=opts.buckets, images=opts.images,
-            machines=opts.machines, force_s3_acls=opts.force_s3_acls)
+            machines=opts.machines, coda=opts.coda,
+            force_s3_acls=opts.force_s3_acls)
     tasks.run(opts.thread_count)
     if opts.snapshot:
         create_snapshot(settings)

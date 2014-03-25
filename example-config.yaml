@@ -1,6 +1,7 @@
 settings:
   root: /srv/backup
   backup-lv: backups/current
+  coda-full-probability: 0.5
   rgw-server: storage.example.org
   rgw-secure: false
   rsync-exclude:
@@ -25,3 +26,19 @@ images:
 snapshots:
   pool-1:
     foo-data-20140301: snapshot-d023e06a-15c2-4c9f-953c-7d22b2fb5b39
+coda:
+  -
+    servers:
+      - coda1.example.org
+      - coda2.example.org
+    volumes:
+      - a:foo
+      - a:bar
+      - a:baz
+  -
+    servers:
+      - coda3.example.org
+      - coda4.example.org
+    volumes:
+      - b:xyzzy
+      - b:plugh
