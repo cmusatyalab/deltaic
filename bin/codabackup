@@ -108,11 +108,8 @@ def sync_tar(tar, root_dir, remove=False, verbose=0):
 
     directories = []
     objects = BloomSet()
-    while True:
-        # Get next entry
-        entry = tar.next()
-        if not entry:
-            break
+    for entry in tar:
+        # Check for existing file
         path = build_path(root_dir, entry.name)
         try:
             st = os.lstat(path)
