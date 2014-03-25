@@ -6,6 +6,7 @@ from optparse import OptionParser
 import os
 import Queue
 import subprocess
+import sys
 from threading import Thread
 import yaml
 
@@ -40,8 +41,8 @@ class BucketTask(Task):
     def __init__(self, settings, name, force_s3_acls=False):
         Task.__init__(self)
         out_dir = os.path.join(settings['root'], 'buckets', name)
-        self.command = [RGWBACKUP, '-v', settings['rgw-server'], name,
-                out_dir]
+        self.command = [sys.executable, RGWBACKUP, '-v',
+                settings['rgw-server'], name, out_dir]
         if settings.get('rgw-secure', False):
             self.command.append('-s')
         if force_s3_acls:
@@ -55,7 +56,7 @@ class ImageTask(Task):
         Task.__init__(self)
         out_path = os.path.join(settings['root'], 'blockdevs', pool,
                 self.SECTION, friendly_name)
-        self.command = [RBDBACKUP, pool, name, out_path]
+        self.command = [sys.executable, RBDBACKUP, pool, name, out_path]
 
 
 class SnapshotTask(ImageTask):
@@ -71,7 +72,7 @@ class MachineTask(Task):
         Task.__init__(self)
         out_path = os.path.join(settings['root'], 'machines',
                 hostname.split('.')[0])
-        self.command = [RSYNCBACKUP, '-v', hostname, out_path]
+        self.command = [sys.executable, RSYNCBACKUP, '-v', hostname, out_path]
         for mount in info['mounts']:
             self.command.extend(['-m', mount])
         for rule in chain(settings.get('rsync-exclude', []),
