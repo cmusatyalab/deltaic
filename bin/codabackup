@@ -115,8 +115,6 @@ def update_dir_from_tar(tar, root_dir, verbose=0):
 
     directories = []
     valid_paths = BloomSet()
-    # Root directory is never in the tar file, but always exists
-    valid_paths.add(root_dir)
     for entry in tar:
         # Check for existing file
         path = build_path(root_dir, entry.name)
@@ -142,8 +140,8 @@ def update_dir_from_tar(tar, root_dir, verbose=0):
                     os.unlink(path)
                 st = None
 
-        # Create parent directory if not present.  Full dumps only include
-        # empty directories; incremental dumps include all directories.
+        # Create parent directory if not present.  Parents are not
+        # necessarily dumped before children.
         dirpath = os.path.dirname(path)
         if not os.path.exists(dirpath):
             os.makedirs(dirpath)
@@ -227,16 +225,8 @@ def update_dir(backup_id, root_dir, incremental=False, verbose=0,
         proc = subprocess.Popen(volutil_cmd(host, 'dump', args, verbose,
                 volutil=volutil), stdout=subprocess.PIPE, stderr=null)
 
-    try:
-        tar = tarfile.open(fileobj=proc.stdout, mode='r|')
-    except tarfile.ReadError, e:
-        if str(e) == 'empty header':
-            # Empty volume
-            valid_paths = set([root_dir])
-        else:
-            raise
-    else:
-        valid_paths = update_dir_from_tar(tar, root_dir, verbose=verbose)
+    tar = tarfile.open(fileobj=proc.stdout, mode='r|')
+    valid_paths = update_dir_from_tar(tar, root_dir, verbose=verbose)
 
     if proc.wait():
         raise DumpError('Coda dump returned %d' % proc.returncode)
