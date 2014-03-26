@@ -150,6 +150,10 @@ class CodaTask(Task):
                 out_path]
         if random.random() >= settings.get('coda-full-probability', 0.143):
             self.command.append('-i')
+        for prog in 'volutil', 'codadump2tar':
+            path = settings.get('coda-%s-path' % prog)
+            if path is not None:
+                self.command.extend(['--%s' % prog, path])
 
 
 class CodaSource(Source):

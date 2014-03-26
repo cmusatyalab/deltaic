@@ -44,11 +44,13 @@ class BloomSet(object):
         return self._bloom_salt + name
 
 
-def volutil_cmd(host, subcommand, args=(), verbose=0):
+def volutil_cmd(host, subcommand, args=(), verbose=0, volutil=None):
+    if volutil is None:
+        volutil = 'volutil'
     if verbose:
-        print '>', 'volutil', subcommand, ' '.join(args)
+        print '>', volutil, subcommand, ' '.join(args)
     return ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no',
-            'root@%s' % host, 'volutil', subcommand] + list(args)
+            'root@%s' % host, volutil, subcommand] + list(args)
 
 
 def get_err_stream(verbose):
@@ -58,9 +60,10 @@ def get_err_stream(verbose):
         return open('/dev/null', 'r+')
 
 
-def get_volume_ids(host, volume, verbose=0):
-    proc = subprocess.Popen(volutil_cmd(host, 'info', [volume], verbose),
-            stdout=subprocess.PIPE, stderr=get_err_stream(verbose))
+def get_volume_ids(host, volume, verbose=0, volutil=None):
+    proc = subprocess.Popen(volutil_cmd(host, 'info', [volume], verbose,
+            volutil=volutil), stdout=subprocess.PIPE,
+            stderr=get_err_stream(verbose))
     info, _ = proc.communicate()
     if proc.returncode:
         raise IOError("Couldn't get volume info for %s" % volume)
@@ -78,13 +81,13 @@ def get_volume_ids(host, volume, verbose=0):
     return volume_id, backup_id
 
 
-def refresh_backup_volume(host, volume, verbose=0):
-    volume_id, _ = get_volume_ids(host, volume, verbose)
-    subprocess.check_call(volutil_cmd(host, 'lock', [volume_id], verbose),
-            stdout=get_err_stream(verbose),
+def refresh_backup_volume(host, volume, verbose=0, volutil=None):
+    volume_id, _ = get_volume_ids(host, volume, verbose, volutil=volutil)
+    subprocess.check_call(volutil_cmd(host, 'lock', [volume_id], verbose,
+            volutil=volutil), stdout=get_err_stream(verbose),
             stderr=get_err_stream(verbose))
-    subprocess.check_call(volutil_cmd(host, 'backup', [volume_id], verbose),
-            stdout=get_err_stream(verbose),
+    subprocess.check_call(volutil_cmd(host, 'backup', [volume_id], verbose,
+            volutil=volutil), stdout=get_err_stream(verbose),
             stderr=get_err_stream(verbose))
 
 
@@ -214,12 +217,15 @@ def update_dir_from_tar(tar, root_dir, verbose=0):
     return valid_paths
 
 
-def update_dir(backup_id, root_dir, incremental=False, verbose=0):
+def update_dir(backup_id, root_dir, incremental=False, verbose=0,
+        volutil=None, codadump2tar=None):
+    if codadump2tar is None:
+        codadump2tar = 'codadump2tar'
     args = ['-i', '-1'] if incremental else []
-    args.extend([backup_id, '|', 'codadump2tar', '-rn', '.'])
+    args.extend([backup_id, '|', codadump2tar, '-rn', '.'])
     with open('/dev/null', 'r+') as null:
-        proc = subprocess.Popen(volutil_cmd(host, 'dump', args, verbose),
-                stdout=subprocess.PIPE, stderr=null)
+        proc = subprocess.Popen(volutil_cmd(host, 'dump', args, verbose,
+                volutil=volutil), stdout=subprocess.PIPE, stderr=null)
 
     try:
         tar = tarfile.open(fileobj=proc.stdout, mode='r|')
@@ -258,7 +264,8 @@ def remove_deleted(root_dir, valid_paths, verbose=0):
                 pass
 
 
-def sync_backup_volume(host, volume, root_dir, incremental=False, verbose=0):
+def sync_backup_volume(host, volume, root_dir, incremental=False, verbose=0,
+        volutil=None, codadump2tar=None):
     if not os.path.exists(root_dir):
         os.makedirs(root_dir)
 
@@ -273,13 +280,14 @@ def sync_backup_volume(host, volume, root_dir, incremental=False, verbose=0):
     elif not incremental_ok:
         incremental = False
 
-    _, backup_id = get_volume_ids(host, volume, verbose)
+    _, backup_id = get_volume_ids(host, volume, verbose, volutil=volutil)
 
     # Retry dump a few times to paper over rpc2 timeouts
     for tries_remaining in range(4, -1, -1):
         try:
             valid_paths = update_dir(backup_id, root_dir,
-                    incremental=incremental, verbose=verbose)
+                    incremental=incremental, verbose=verbose, volutil=volutil,
+                    codadump2tar=codadump2tar)
             break
         except DumpError:
             if not tries_remaining:
@@ -288,13 +296,16 @@ def sync_backup_volume(host, volume, root_dir, incremental=False, verbose=0):
     if not incremental:
         remove_deleted(root_dir, valid_paths, verbose=verbose)
 
-    subprocess.check_call(volutil_cmd(host, 'ancient', [backup_id], verbose),
-            stderr=get_err_stream(verbose))
+    subprocess.check_call(volutil_cmd(host, 'ancient', [backup_id], verbose,
+            volutil=volutil), stderr=get_err_stream(verbose))
     update_xattr(root_xattrs, ATTR_INCREMENTAL, '')
 
 
 if __name__ == '__main__':
     parser = OptionParser(usage='Usage: %prog [options] <host> <volume> <out_dir>')
+    parser.add_option('--codadump2tar', dest='codadump2tar',
+            default='codadump2tar',
+            help='path to codadump2tar program on server')
     parser.add_option('-i', '--incremental', dest='incremental',
             action='store_true',
             help='request incremental backup')
@@ -304,6 +315,8 @@ if __name__ == '__main__':
     parser.add_option('-v', '--verbose', dest='verbose', action='count',
             default=0,
             help='pass once to show activity, twice for volutil output')
+    parser.add_option('--volutil', dest='volutil', default='volutil',
+            help='path to volutil program on server')
 
     (opts, args) = parser.parse_args()
     try:
@@ -312,6 +325,8 @@ if __name__ == '__main__':
         parser.error('Missing argument')
 
     if opts.refresh:
-        refresh_backup_volume(host, volume, verbose=opts.verbose)
+        refresh_backup_volume(host, volume, verbose=opts.verbose,
+                volutil=opts.volutil)
     sync_backup_volume(host, volume, root_dir, incremental=opts.incremental,
-            verbose=opts.verbose)
+            verbose=opts.verbose, volutil=opts.volutil,
+            codadump2tar=opts.codadump2tar)

@@ -2,6 +2,8 @@ settings:
   root: /srv/backup
   backup-lv: backups/current
   coda-full-probability: 0.5
+  coda-volutil-path: /usr/sbin/volutil
+  coda-codadump2tar-path: /usr/sbin/codadump2tar
   rgw-server: storage.example.org
   rgw-secure: false
   rsync-exclude:
