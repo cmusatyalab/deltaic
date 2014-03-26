@@ -193,7 +193,7 @@ def create_snapshot(settings):
         else:
             raise Exception("Couldn't locate unused snapshot LV")
     subprocess.check_call(['sudo', 'lvcreate', '-s', backup_lv, '-p', 'r',
-            '-n', snapshot_lv])
+            '-n', snapshot_lv, '--addtag', 'backup-snapshot'])
 
 
 if __name__ == '__main__':
