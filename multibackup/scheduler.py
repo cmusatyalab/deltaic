@@ -56,8 +56,7 @@ class BucketTask(Task):
     def __init__(self, settings, name, force_s3_acls=False):
         Task.__init__(self)
         out_dir = os.path.join(settings['root'], 'rgw', name)
-        self.args = ['rgw', 'backup', '-v', settings['rgw-server'], name,
-                out_dir]
+        self.args = ['rgw', 'backup', settings['rgw-server'], name, out_dir]
         if settings.get('rgw-secure', False):
             self.args.append('-s')
         if force_s3_acls:
@@ -112,7 +111,7 @@ class RsyncTask(Task):
         Task.__init__(self)
         out_path = os.path.join(settings['root'], 'rsync',
                 hostname.split('.')[0])
-        self.args = ['rsync', 'backup', '-v', hostname, out_path]
+        self.args = ['rsync', 'backup', hostname, out_path]
         self.args.extend(info['mounts'])
         for rule in chain(settings.get('rsync-exclude', []),
                 info.get('exclude', [])):
@@ -137,7 +136,7 @@ class CodaTask(Task):
         Task.__init__(self)
         out_path = os.path.join(settings['root'], 'coda',
                 server.split('.')[0], volume)
-        self.args = ['coda', 'backup', '-v', server, volume, out_path]
+        self.args = ['coda', 'backup', server, volume, out_path]
         if random.random() >= settings.get('coda-full-probability', 0.143):
             self.args.append('-i')
         for prog in 'volutil', 'codadump2tar':

@@ -189,8 +189,7 @@ def sync_key(args):
         return (key_name, "Couldn't fetch %s: %s" % (key_name, e))
 
 
-def sync_bucket(server, bucket_name, root_dir, workers, verbose, force_acls,
-        secure):
+def sync_bucket(server, bucket_name, root_dir, workers, force_acls, secure):
     # Connect
     access_key, secret_key = get_bucket_credentials(bucket_name)
     conn = connect(server, access_key, secret_key, secure=secure)
@@ -208,7 +207,7 @@ def sync_bucket(server, bucket_name, root_dir, workers, verbose, force_acls,
     for path, error in pool.imap_unordered(sync_key, keys):
         if error:
             warn(error)
-        elif verbose and path:
+        elif path:
             print path
     pool.close()
     pool.join()
@@ -242,8 +241,7 @@ def sync_bucket(server, bucket_name, root_dir, workers, verbose, force_acls,
                         warn('Warning: Deleting file that we just created: %s',
                                 filepath)
             if delete:
-                if verbose:
-                    print 'Deleting', filepath
+                print 'Deleting', filepath
                 try:
                     os.unlink(filepath)
                 except OSError, e:
@@ -257,8 +255,7 @@ def sync_bucket(server, bucket_name, root_dir, workers, verbose, force_acls,
 
 def cmd_rgwbackup(config, args):
     sync_bucket(args.server, args.bucket, args.root_dir, workers=args.workers,
-            verbose=args.verbose, force_acls=args.force_acls,
-            secure=args.secure)
+            force_acls=args.force_acls, secure=args.secure)
 
 
 def _setup():
@@ -281,7 +278,5 @@ def _setup():
             help='number of worker processes to start [4]')
     parser.add_argument('-s', '--secure', action='store_true',
             help='connect securely')
-    parser.add_argument('-v', '--verbose', action='store_true',
-            help='show progress')
 
 _setup()

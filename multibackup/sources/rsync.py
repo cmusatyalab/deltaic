@@ -11,12 +11,10 @@ def remote_command(host, command):
     subprocess.check_call(args)
 
 
-def sync_host(host, root_dir, mounts, exclude=(), verbose=False):
-    args = ['rsync', '-aHAXRx', '--fake-super', '--delete',
+def sync_host(host, root_dir, mounts, exclude=()):
+    args = ['rsync', '-aHAXRxi', '--fake-super', '--delete',
             '--delete-excluded', '--numeric-ids', '--stats', '--partial',
             '--rsh=ssh -o BatchMode=yes -o StrictHostKeyChecking=no']
-    if verbose:
-        args.append('-i')
     args.extend(['--exclude=' + r for r in exclude])
     args.extend(['root@%s:%s' % (host, mount.rstrip('/') or '/')
             for mount in mounts])
@@ -31,8 +29,7 @@ def sync_host(host, root_dir, mounts, exclude=(), verbose=False):
 def cmd_rsyncbackup(config, args):
     if args.pre:
         remote_command(args.host, args.pre)
-    sync_host(args.host, args.root_dir, args.mounts, args.exclude,
-            verbose=args.verbose)
+    sync_host(args.host, args.root_dir, args.mounts, args.exclude)
     if args.post:
         remote_command(args.host, args.post)
 
@@ -54,8 +51,6 @@ def _setup():
             help='command to run on remote side before backup')
     parser.add_argument('--post', metavar='COMMAND',
             help='command to run on remote side after backup')
-    parser.add_argument('-v', '--verbose', action='store_true',
-            help='show progress')
     parser.add_argument('-x', '--exclude', action='append', default=[],
             help='rsync exclude pattern (can be repeated)')
 
