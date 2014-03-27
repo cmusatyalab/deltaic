@@ -1,7 +1,11 @@
 #!/usr/bin/env python
 
+import yaml
+
 from multibackup.command import parser
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    args.func(args)
+    with open(args.config_file) as fh:
+        config = yaml.safe_load(fh)
+    args.func(config, args)

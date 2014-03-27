@@ -290,7 +290,7 @@ def sync_backup_volume(host, volume, root_dir, incremental=False, verbose=0,
     update_xattr(root_xattrs, ATTR_INCREMENTAL, '')
 
 
-def cmd_codabackup(args):
+def cmd_codabackup(config, args):
     if args.refresh:
         refresh_backup_volume(args.host, args.volume, verbose=args.verbose,
                 volutil=args.volutil)

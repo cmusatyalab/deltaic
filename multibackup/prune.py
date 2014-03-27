@@ -1,7 +1,6 @@
 from __future__ import division
 from datetime import date, datetime, timedelta
 import subprocess
-import yaml
 
 from .command import subparsers
 
@@ -97,11 +96,8 @@ def select_snapshots_to_remove(settings, snapshots):
     return remove
 
 
-def cmd_prune(args):
-    with open(args.config_path) as fh:
-        config = yaml.safe_load(fh)
+def cmd_prune(config, args):
     settings = config['settings']
-
     snapshots = get_snapshots(settings)
     remove = select_snapshots_to_remove(settings, snapshots)
     for cur in sorted(remove):
@@ -115,8 +111,6 @@ def _setup():
     parser = subparsers.add_parser('prune',
             help='delete old LVM snapshots')
     parser.set_defaults(func=cmd_prune)
-    parser.add_argument('config_path', metavar='config-path',
-            help='path to config file')
     parser.add_argument('-n', '--dry-run', action='store_true',
             help='just print the snapshots that would be removed')
     parser.add_argument('-v', '--verbose', action='store_true',

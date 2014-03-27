@@ -255,7 +255,7 @@ def sync_bucket(server, bucket_name, root_dir, workers, verbose, force_acls,
             pass
 
 
-def cmd_rgwbackup(args):
+def cmd_rgwbackup(config, args):
     sync_bucket(args.server, args.bucket, args.root_dir, workers=args.workers,
             verbose=args.verbose, force_acls=args.force_acls,
             secure=args.secure)

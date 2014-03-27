@@ -28,7 +28,7 @@ def sync_host(host, root_dir, mounts, exclude=(), verbose=False):
         raise Exception('rsync failed with code %d' % ret)
 
 
-def cmd_rsyncbackup(args):
+def cmd_rsyncbackup(config, args):
     if args.pre:
         remote_command(host, args.pre)
     sync_host(args.host, args.root_dir, args.mounts, args.exclude,

@@ -100,7 +100,7 @@ def store_image(pool, image, path):
         rbd_exec(pool, 'snap', 'rm', '-i', image, '--snap', temp_snapshot)
 
 
-def cmd_rbdbackup(args):
+def cmd_rbdbackup(config, args):
     if args.snapshot:
         store_snapshot(args.pool, args.object_name, args.out_path)
     else:

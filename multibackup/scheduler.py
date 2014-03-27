@@ -6,7 +6,6 @@ import random
 import subprocess
 import sys
 from threading import Thread
-import yaml
 
 from .command import subparsers
 
@@ -186,10 +185,7 @@ def create_snapshot(settings):
             '-n', snapshot_lv, '--addtag', 'backup-snapshot'])
 
 
-def cmd_run(args):
-    with open(args.config_path) as fh:
-        config = yaml.safe_load(fh)
-
+def cmd_run(config, args):
     run_tasks(config, args.options, args.sources)
     if args.snapshot:
         create_snapshot(config['settings'])
@@ -199,8 +195,6 @@ def _setup():
     parser = subparsers.add_parser('run',
             help='run a backup')
     parser.set_defaults(func=cmd_run)
-    parser.add_argument('config_path', metavar='config-path',
-            help='path to config file')
     parser.add_argument('-o', '--opt', dest='options', action='append',
             default=[], metavar='OPTION',
             help='option string for source drivers')
