@@ -1,5 +1,4 @@
 import os
-from pybloom import ScalableBloomFilter
 import random
 import re
 import shutil
@@ -10,6 +9,7 @@ import xattr
 
 from ..command import make_subcommand_group
 from ..source import Task, Source
+from ..util import BloomSet
 
 ATTR_INCREMENTAL = 'user.coda.incremental-ok'
 ATTR_MODE = 'user.coda.mode'
@@ -18,31 +18,6 @@ BLOCKSIZE = 256 << 10
 
 class DumpError(Exception):
     pass
-
-
-class BloomSet(object):
-    BLOOM_INITIAL_CAPACITY = 1000
-    BLOOM_ERROR_RATE = 0.0001
-
-    def __init__(self):
-        self._set = ScalableBloomFilter(
-                initial_capacity=self.BLOOM_INITIAL_CAPACITY,
-                error_rate=self.BLOOM_ERROR_RATE,
-                mode=ScalableBloomFilter.LARGE_SET_GROWTH)
-        # False positives in the Bloom filter will cause us to fail to
-        # garbage-collect an object.  Salt the Bloom filter to ensure
-        # that we get a different set of false positives on every run.
-        self._bloom_salt = os.urandom(2)
-
-    def add(self, name):
-        self._set.add(self._bloom_key(name))
-
-    def __contains__(self, name):
-        # May return false positives.
-        return self._bloom_key(name) in self._set
-
-    def _bloom_key(self, name):
-        return self._bloom_salt + name
 
 
 def volutil_cmd(host, subcommand, args=(), volutil=None):

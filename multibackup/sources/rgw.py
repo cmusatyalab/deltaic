@@ -4,7 +4,6 @@ import dateutil.parser
 import json
 from multiprocessing import Pool
 import os
-from pybloom import ScalableBloomFilter
 import random
 import subprocess
 import sys
@@ -12,6 +11,7 @@ import time
 
 from ..command import make_subcommand_group
 from ..source import Task, Source
+from ..util import BloomSet
 
 KEY_METADATA_ATTRS = {
     'cache_control': 'Cache-Control',
@@ -98,32 +98,13 @@ def update_file(path, data):
             fh.truncate()
 
 
-class KeyEnumerator(object):
-    BLOOM_INITIAL_CAPACITY = 1000
-    BLOOM_ERROR_RATE = 0.0001
-
-    def __init__(self, bucket):
-        self._bucket = bucket
-        self._object_set = ScalableBloomFilter(
-                initial_capacity=self.BLOOM_INITIAL_CAPACITY,
-                error_rate=self.BLOOM_ERROR_RATE,
-                mode=ScalableBloomFilter.LARGE_SET_GROWTH)
-        # False positives in the Bloom filter will cause us to fail to
-        # garbage-collect an object.  Salt the Bloom filter to ensure
-        # that we get a different set of false positives on every run.
-        self._bloom_salt = os.urandom(2)
-
-    def __iter__(self):
-        for key in self._bucket.list():
-            self._object_set.add(self._bloom_key(key.name))
+def enumerate_keys(bucket):
+    names = BloomSet()
+    def iter():
+        for key in bucket.list():
+            names.add(key.name)
             yield (key.name, key.size, key.last_modified)
-
-    def __contains__(self, key_name):
-        # Only works after iteration completes.  May return false positives.
-        return self._bloom_key(key_name) in self._object_set
-
-    def _bloom_key(self, key_name):
-        return self._bloom_salt + key_name.encode('utf-8')
+    return iter(), names
 
 
 def pool_init(root_dir_, server, bucket_name, access_key, secret_key, secure,
@@ -205,8 +186,8 @@ def sync_bucket(server, bucket_name, root_dir, workers, force_acls, secure):
     start_time = time.time()
     pool = Pool(workers, pool_init, [root_dir, server, bucket_name,
             access_key, secret_key, secure, force_acls])
-    keys = KeyEnumerator(bucket)
-    for path, error in pool.imap_unordered(sync_key, keys):
+    iter, key_set = enumerate_keys(bucket)
+    for path, error in pool.imap_unordered(sync_key, iter):
         if error:
             warn(error)
         elif path:
@@ -236,7 +217,7 @@ def sync_bucket(server, bucket_name, root_dir, workers, force_acls, secure):
                     delete = False
                 else:
                     key_name = path_to_key_name(root_dir, filepath)
-                    delete = key_name not in keys
+                    delete = key_name not in key_set
                     if delete and os.stat(filepath).st_mtime > start_time:
                         # Probably a failure to non-destructively encode the
                         # key name in the filesystem path.
