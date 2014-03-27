@@ -11,8 +11,10 @@ def remote_command(host, command):
     subprocess.check_call(args)
 
 
-def sync_host(host, root_dir, mounts, exclude=()):
-    args = ['rsync', '-aHAXRxi', '--fake-super', '--delete',
+def sync_host(host, root_dir, mounts, exclude=(), rsync=None):
+    if rsync is None:
+        rsync = 'rsync'
+    args = [rsync, '-aHAXRxi', '--fake-super', '--delete',
             '--delete-excluded', '--numeric-ids', '--stats', '--partial',
             '--rsh=ssh -o BatchMode=yes -o StrictHostKeyChecking=no']
     args.extend(['--exclude=' + r for r in exclude])
@@ -32,10 +34,11 @@ def cmd_rsync_backup(config, args):
     root_dir = os.path.join(settings['root'], 'rsync', args.host.split('.')[0])
     exclude = settings.get('rsync-exclude', [])
     exclude.extend(info.get('exclude', []))
+    rsync = settings.get('rsync-local-binary')
 
     if 'pre' in info:
         remote_command(args.host, info['pre'])
-    sync_host(args.host, root_dir, info['mounts'], exclude)
+    sync_host(args.host, root_dir, info['mounts'], exclude, rsync=rsync)
     if 'post' in info:
         remote_command(args.host, info['post'])
 

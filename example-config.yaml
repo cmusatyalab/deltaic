@@ -7,6 +7,7 @@ settings:
   rgw-server: storage.example.org
   rgw-secure: false
   rgw-threads: 4
+  rsync-local-binary: /usr/local/bin/rsync
   rsync-exclude:
     - /tmp/*
     - /var/tmp/*
