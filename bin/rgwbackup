@@ -7,7 +7,7 @@ import dateutil.parser
 import json
 from multiprocessing import Pool
 import os
-from pybloom import ScalableBloomFilter  # https://github.com/jaybaird/python-bloomfilter
+from pybloom import ScalableBloomFilter
 import subprocess
 import sys
 import time
