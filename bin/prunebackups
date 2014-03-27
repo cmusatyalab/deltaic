@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 from __future__ import division
+import argparse
 from datetime import date, datetime, timedelta
-from optparse import OptionParser
 import subprocess
 import yaml
 
@@ -99,26 +99,23 @@ def select_snapshots_to_remove(settings, snapshots):
 
 
 if __name__ == '__main__':
-    parser = OptionParser(usage='Usage: %prog [options] <config_path>')
-    parser.add_option('-n', '--dry-run', dest='dry_run', action='store_true',
+    parser = argparse.ArgumentParser()
+    parser.add_argument('config_path', metavar='config-path',
+            help='path to config file')
+    parser.add_argument('-n', '--dry-run', action='store_true',
             help='just print the snapshots that would be removed')
-    parser.add_option('-v', '--verbose', dest='verbose', action='store_true',
+    parser.add_argument('-v', '--verbose', action='store_true',
             help='report actions taken')
+    args = parser.parse_args()
 
-    (opts, args) = parser.parse_args()
-    try:
-        config_path = args[0]
-    except IndexError:
-        parser.error('Missing argument')
-
-    with open(config_path) as fh:
+    with open(args.config_path) as fh:
         config = yaml.safe_load(fh)
     settings = config['settings']
 
     snapshots = get_snapshots(settings)
     remove = select_snapshots_to_remove(settings, snapshots)
     for cur in sorted(remove):
-        if opts.dry_run:
+        if args.dry_run:
             print cur
         else:
-            cur.remove(verbose=opts.verbose)
+            cur.remove(verbose=args.verbose)

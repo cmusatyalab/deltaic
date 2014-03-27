@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from optparse import OptionParser
+import argparse
 import os
 from pybloom import ScalableBloomFilter
 import re
@@ -292,31 +292,30 @@ def sync_backup_volume(host, volume, root_dir, incremental=False, verbose=0,
 
 
 if __name__ == '__main__':
-    parser = OptionParser(usage='Usage: %prog [options] <host> <volume> <out_dir>')
-    parser.add_option('--codadump2tar', dest='codadump2tar',
-            default='codadump2tar',
+    parser = argparse.ArgumentParser()
+    parser.add_argument('host',
+            help='Coda server hostname')
+    parser.add_argument('volume',
+            help='Coda volume name')
+    parser.add_argument('root_dir', metavar='out-dir',
+            help='Output directory')
+    parser.add_argument('--codadump2tar', default='codadump2tar',
+            metavar='PATH',
             help='path to codadump2tar program on server')
-    parser.add_option('-i', '--incremental', dest='incremental',
-            action='store_true',
+    parser.add_argument('-i', '--incremental', action='store_true',
             help='request incremental backup')
-    parser.add_option('-R', '--skip-refresh', dest='refresh', default=True,
+    parser.add_argument('-R', '--skip-refresh', dest='refresh', default=True,
             action='store_false',
             help='skip refreshing backup volume')
-    parser.add_option('-v', '--verbose', dest='verbose', action='count',
-            default=0,
+    parser.add_argument('-v', '--verbose', action='count', default=0,
             help='pass once to show activity, twice for volutil output')
-    parser.add_option('--volutil', dest='volutil', default='volutil',
+    parser.add_argument('--volutil', default='volutil', metavar='PATH',
             help='path to volutil program on server')
+    args = parser.parse_args()
 
-    (opts, args) = parser.parse_args()
-    try:
-        host, volume, root_dir = args[0:3]
-    except ValueError:
-        parser.error('Missing argument')
-
-    if opts.refresh:
-        refresh_backup_volume(host, volume, verbose=opts.verbose,
-                volutil=opts.volutil)
-    sync_backup_volume(host, volume, root_dir, incremental=opts.incremental,
-            verbose=opts.verbose, volutil=opts.volutil,
-            codadump2tar=opts.codadump2tar)
+    if args.refresh:
+        refresh_backup_volume(args.host, args.volume, verbose=args.verbose,
+                volutil=args.volutil)
+    sync_backup_volume(args.host, args.volume, args.root_dir,
+            incremental=args.incremental, verbose=args.verbose,
+            volutil=args.volutil, codadump2tar=args.codadump2tar)

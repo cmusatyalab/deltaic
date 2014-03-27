@@ -13,6 +13,7 @@ setup(
     description='Simple multi-source backup system using LVM snapshots',
     license='GNU General Public License, version 2',
     install_requires=[
+        'argparse',
         'boto',
         'pybloom', # >= 2.0
         'python-dateutil',

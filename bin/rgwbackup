@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
+import argparse
 import boto
 from boto.s3.connection import OrdinaryCallingFormat
 import dateutil.parser
 import json
 from multiprocessing import Pool
-from optparse import OptionParser
 import os
 from pybloom import ScalableBloomFilter  # https://github.com/jaybaird/python-bloomfilter
 import subprocess
@@ -45,7 +45,7 @@ def get_bucket_credentials(bucket_name):
 
 
 def connect(server, access_key, secret_key, secure=False):
-    return boto.connect_s3(host=server, is_secure=secure,
+    return boto.connect_s3(host=server, is_secure=secure or False,
             aws_access_key_id=access_key, aws_secret_access_key=secret_key,
             calling_format=OrdinaryCallingFormat())
 
@@ -257,25 +257,24 @@ def sync_bucket(server, bucket_name, root_dir, workers, verbose, force_acls,
 
 
 if __name__ == '__main__':
-    parser = OptionParser(usage='Usage: %prog [options] <server> <bucket> <out_dir>')
-    parser.add_option('-A', '--force-acls', dest='force_acls',
-                action='store_true',
-                help='update ACLs for unmodified keys')
-    parser.add_option('-j', '--jobs', metavar='COUNT', dest='workers',
-                type='int', default=4,
-                help='number of worker processes to start [4]')
-    parser.add_option('-s', '--secure', dest='secure', action='store_true',
-                default=False,
-                help='connect securely')
-    parser.add_option('-v', '--verbose', dest='verbose', action='store_true',
-                help='show progress')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('server',
+            help='server hostname')
+    parser.add_argument('bucket',
+            help='bucket name')
+    parser.add_argument('root_dir', metavar='out-dir',
+            help='path to output directory')
+    parser.add_argument('-A', '--force-acls', action='store_true',
+            help='update ACLs for unmodified keys')
+    parser.add_argument('-j', '--jobs', metavar='COUNT', dest='workers',
+            type=int, default=4,
+            help='number of worker processes to start [4]')
+    parser.add_argument('-s', '--secure', action='store_true',
+            help='connect securely')
+    parser.add_argument('-v', '--verbose', action='store_true',
+            help='show progress')
+    args = parser.parse_args()
 
-    (opts, args) = parser.parse_args()
-    try:
-        server, bucket, root_dir = args[0:3]
-    except ValueError:
-        parser.error('Missing argument')
-
-    sync_bucket(server, bucket, root_dir, workers=opts.workers,
-            verbose=opts.verbose, force_acls=opts.force_acls,
-            secure=opts.secure)
+    sync_bucket(args.server, args.bucket, args.root_dir, workers=args.workers,
+            verbose=args.verbose, force_acls=args.force_acls,
+            secure=args.secure)
