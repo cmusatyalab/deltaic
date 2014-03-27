@@ -1,5 +1,0 @@
-boto==2.27.0
-git+https://github.com/jaybaird/python-bloomfilter@v2.0
-python-dateutil==2.2
-PyYAML==3.10
-xattr==0.7.4
