@@ -287,12 +287,14 @@ def cmd_coda_backup(config, args):
     settings = config['settings']
     root_dir = os.path.join(settings['root'], 'coda', args.host.split('.')[0],
             args.volume)
+    volutil = settings.get('coda-volutil-path', 'volutil')
+    codadump2tar = settings.get('coda-codadump2tar-path', 'codadump2tar')
     if args.refresh:
         refresh_backup_volume(args.host, args.volume, verbose=args.verbose,
-                volutil=args.volutil)
+                volutil=volutil)
     sync_backup_volume(args.host, args.volume, root_dir,
             incremental=args.incremental, verbose=args.verbose,
-            volutil=args.volutil, codadump2tar=args.codadump2tar)
+            volutil=volutil, codadump2tar=codadump2tar)
 
 
 def _setup():
@@ -306,9 +308,6 @@ def _setup():
             help='Coda server hostname')
     parser.add_argument('volume',
             help='Coda volume name')
-    parser.add_argument('--codadump2tar', default='codadump2tar',
-            metavar='PATH',
-            help='path to codadump2tar program on server')
     parser.add_argument('-i', '--incremental', action='store_true',
             help='request incremental backup')
     parser.add_argument('-R', '--skip-refresh', dest='refresh', default=True,
@@ -316,7 +315,5 @@ def _setup():
             help='skip refreshing backup volume')
     parser.add_argument('-v', '--verbose', action='store_true',
             help='show volutil output')
-    parser.add_argument('--volutil', default='volutil', metavar='PATH',
-            help='path to volutil program on server')
 
 _setup()

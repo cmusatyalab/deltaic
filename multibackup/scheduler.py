@@ -1,5 +1,4 @@
 from datetime import date
-from itertools import chain
 import os
 import Queue
 import random
@@ -53,11 +52,9 @@ class Source(object):
 
 
 class BucketTask(Task):
-    def __init__(self, settings, name, force_s3_acls=False):
+    def __init__(self, name, force_s3_acls=False):
         Task.__init__(self)
-        self.args = ['rgw', 'backup', settings['rgw-server'], name]
-        if settings.get('rgw-secure', False):
-            self.args.append('-s')
+        self.args = ['rgw', 'backup', name]
         if force_s3_acls:
             self.args.append('-A')
 
@@ -68,19 +65,19 @@ class RGWSource(Source):
     def __init__(self, config, options):
         Source.__init__(self, config)
         for name in self._manifest:
-            self._queue.put(BucketTask(self._settings, name,
+            self._queue.put(BucketTask(name,
                     force_s3_acls='rgw-force-acls' in options))
 
 
 class ImageTask(Task):
-    def __init__(self, settings, pool, name, friendly_name):
+    def __init__(self, pool, friendly_name):
         Task.__init__(self)
-        self.args = ['rbd', 'backup', '-n', friendly_name, pool, name]
+        self.args = ['rbd', 'backup', pool, friendly_name]
 
 
 class SnapshotTask(ImageTask):
-    def __init__(self, settings, pool, name, friendly_name):
-        ImageTask.__init__(self, settings, pool, name, friendly_name)
+    def __init__(self, pool, friendly_name):
+        ImageTask.__init__(self, pool, friendly_name)
         self.args.append('-s')
 
 
@@ -90,26 +87,16 @@ class RBDSource(Source):
     def __init__(self, config, options):
         Source.__init__(self, config)
         for pool, info in self._manifest.items():
-            for friendly_name, name in info.get('images', {}).items():
-                self._queue.put(ImageTask(self._settings, pool, name,
-                        friendly_name))
-            for friendly_name, name in info.get('snapshots', {}).items():
-                self._queue.put(SnapshotTask(self._settings, pool, name,
-                        friendly_name))
+            for friendly_name in info.get('images', {}):
+                self._queue.put(ImageTask(pool, friendly_name))
+            for friendly_name in info.get('snapshots', {}):
+                self._queue.put(SnapshotTask(pool, friendly_name))
 
 
 class RsyncTask(Task):
-    def __init__(self, settings, hostname, info):
+    def __init__(self, hostname):
         Task.__init__(self)
         self.args = ['rsync', 'backup', hostname]
-        self.args.extend(info['mounts'])
-        for rule in chain(settings.get('rsync-exclude', []),
-                info.get('exclude', [])):
-            self.args.extend(['-x', rule])
-        if 'pre' in info:
-            self.args.extend(['--pre', info['pre']])
-        if 'post' in info:
-            self.args.extend(['--post', info['post']])
 
 
 class RsyncSource(Source):
@@ -117,8 +104,8 @@ class RsyncSource(Source):
 
     def __init__(self, config, options):
         Source.__init__(self, config)
-        for hostname, info in self._manifest.items():
-            self._queue.put(RsyncTask(self._settings, hostname, info))
+        for hostname in sorted(self._manifest):
+            self._queue.put(RsyncTask(hostname))
 
 
 class CodaTask(Task):
@@ -127,10 +114,6 @@ class CodaTask(Task):
         self.args = ['coda', 'backup', server, volume]
         if random.random() >= settings.get('coda-full-probability', 0.143):
             self.args.append('-i')
-        for prog in 'volutil', 'codadump2tar':
-            path = settings.get('coda-%s-path' % prog)
-            if path is not None:
-                self.args.extend(['--%s' % prog, path])
 
 
 class CodaSource(Source):

@@ -6,6 +6,7 @@ settings:
   coda-codadump2tar-path: /usr/sbin/codadump2tar
   rgw-server: storage.example.org
   rgw-secure: false
+  rgw-threads: 4
   rsync-exclude:
     - /tmp/*
     - /var/tmp/*
