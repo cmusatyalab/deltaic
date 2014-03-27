@@ -1,9 +1,8 @@
-#!/usr/bin/env python
-
-import argparse
 import os
 import subprocess
 import sys
+
+from ..command import subparsers
 
 def remote_command(host, command):
     args = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no',
@@ -29,8 +28,19 @@ def sync_host(host, root_dir, mounts, exclude=(), verbose=False):
         raise Exception('rsync failed with code %d' % ret)
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
+def cmd_rsyncbackup(args):
+    if args.pre:
+        remote_command(host, args.pre)
+    sync_host(args.host, args.root_dir, args.mounts, args.exclude,
+            verbose=args.verbose)
+    if args.post:
+        remote_command(host, args.post)
+
+
+def _setup():
+    parser = subparsers.add_parser('rsyncbackup',
+            help='back up host filesystem via rsync')
+    parser.set_defaults(func=cmd_rsyncbackup)
     parser.add_argument('host',
             help='host to back up')
     parser.add_argument('root_dir', metavar='out-dir',
@@ -45,11 +55,5 @@ if __name__ == '__main__':
             help='show progress')
     parser.add_argument('-x', '--exclude', action='append', default=[],
             help='rsync exclude pattern (can be repeated)')
-    args = parser.parse_args()
 
-    if args.pre:
-        remote_command(host, args.pre)
-    sync_host(args.host, args.root_dir, args.mounts, args.exclude,
-            verbose=args.verbose)
-    if args.post:
-        remote_command(host, args.post)
+_setup()

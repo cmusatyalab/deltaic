@@ -1,10 +1,9 @@
-#!/usr/bin/env python
-
 from __future__ import division
-import argparse
 from datetime import date, datetime, timedelta
 import subprocess
 import yaml
+
+from .command import subparsers
 
 class Snapshot(object):
     def __init__(self, vg, name):
@@ -98,16 +97,7 @@ def select_snapshots_to_remove(settings, snapshots):
     return remove
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('config_path', metavar='config-path',
-            help='path to config file')
-    parser.add_argument('-n', '--dry-run', action='store_true',
-            help='just print the snapshots that would be removed')
-    parser.add_argument('-v', '--verbose', action='store_true',
-            help='report actions taken')
-    args = parser.parse_args()
-
+def cmd_prune(args):
     with open(args.config_path) as fh:
         config = yaml.safe_load(fh)
     settings = config['settings']
@@ -119,3 +109,17 @@ if __name__ == '__main__':
             print cur
         else:
             cur.remove(verbose=args.verbose)
+
+
+def _setup():
+    parser = subparsers.add_parser('prune',
+            help='delete old LVM snapshots')
+    parser.set_defaults(func=cmd_prune)
+    parser.add_argument('config_path', metavar='config-path',
+            help='path to config file')
+    parser.add_argument('-n', '--dry-run', action='store_true',
+            help='just print the snapshots that would be removed')
+    parser.add_argument('-v', '--verbose', action='store_true',
+            help='report actions taken')
+
+_setup()

@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-
-import argparse
 import os
 from pybloom import ScalableBloomFilter
 import re
@@ -9,6 +6,8 @@ import stat
 import subprocess
 import tarfile
 import xattr
+
+from ..command import subparsers
 
 ATTR_INCREMENTAL = 'user.coda.incremental-ok'
 ATTR_MODE = 'user.coda.mode'
@@ -291,8 +290,19 @@ def sync_backup_volume(host, volume, root_dir, incremental=False, verbose=0,
     update_xattr(root_xattrs, ATTR_INCREMENTAL, '')
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
+def cmd_codabackup(args):
+    if args.refresh:
+        refresh_backup_volume(args.host, args.volume, verbose=args.verbose,
+                volutil=args.volutil)
+    sync_backup_volume(args.host, args.volume, args.root_dir,
+            incremental=args.incremental, verbose=args.verbose,
+            volutil=args.volutil, codadump2tar=args.codadump2tar)
+
+
+def _setup():
+    parser = subparsers.add_parser('codabackup',
+            help='back up Coda volume')
+    parser.set_defaults(func=cmd_codabackup)
     parser.add_argument('host',
             help='Coda server hostname')
     parser.add_argument('volume',
@@ -311,11 +321,5 @@ if __name__ == '__main__':
             help='pass once to show activity, twice for volutil output')
     parser.add_argument('--volutil', default='volutil', metavar='PATH',
             help='path to volutil program on server')
-    args = parser.parse_args()
 
-    if args.refresh:
-        refresh_backup_volume(args.host, args.volume, verbose=args.verbose,
-                volutil=args.volutil)
-    sync_backup_volume(args.host, args.volume, args.root_dir,
-            incremental=args.incremental, verbose=args.verbose,
-            volutil=args.volutil, codadump2tar=args.codadump2tar)
+_setup()

@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-
-import argparse
 import boto
 from boto.s3.connection import OrdinaryCallingFormat
 import dateutil.parser
@@ -11,6 +8,8 @@ from pybloom import ScalableBloomFilter
 import subprocess
 import sys
 import time
+
+from ..command import subparsers
 
 KEY_METADATA_ATTRS = {
     'cache_control': 'Cache-Control',
@@ -256,8 +255,16 @@ def sync_bucket(server, bucket_name, root_dir, workers, verbose, force_acls,
             pass
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
+def cmd_rgwbackup(args):
+    sync_bucket(args.server, args.bucket, args.root_dir, workers=args.workers,
+            verbose=args.verbose, force_acls=args.force_acls,
+            secure=args.secure)
+
+
+def _setup():
+    parser = subparsers.add_parser('rgwbackup',
+            help='back up radosgw bucket')
+    parser.set_defaults(func=cmd_rgwbackup)
     parser.add_argument('server',
             help='server hostname')
     parser.add_argument('bucket',
@@ -273,8 +280,5 @@ if __name__ == '__main__':
             help='connect securely')
     parser.add_argument('-v', '--verbose', action='store_true',
             help='show progress')
-    args = parser.parse_args()
 
-    sync_bucket(args.server, args.bucket, args.root_dir, workers=args.workers,
-            verbose=args.verbose, force_acls=args.force_acls,
-            secure=args.secure)
+_setup()

@@ -2,13 +2,12 @@ from setuptools import setup
 
 setup(
     name='multibackup',
+    packages=[
+        'multibackup',
+        'multibackup.sources',
+    ],
     scripts=[
-        'bin/backup',
-        'bin/codabackup',
-        'bin/prunebackups',
-        'bin/rbdbackup',
-        'bin/rgwbackup',
-        'bin/rsyncbackup',
+        'bin/multibackup',
     ],
     description='Simple multi-source backup system using LVM snapshots',
     license='GNU General Public License, version 2',

@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-
-import argparse
 from datetime import date
 from itertools import chain
 import os
@@ -11,17 +8,13 @@ import sys
 from threading import Thread
 import yaml
 
-PROGDIR = os.path.abspath(os.path.dirname(__file__))
-CODABACKUP = os.path.join(PROGDIR, 'codabackup')
-RBDBACKUP = os.path.join(PROGDIR, 'rbdbackup')
-RGWBACKUP = os.path.join(PROGDIR, 'rgwbackup')
-RSYNCBACKUP = os.path.join(PROGDIR, 'rsyncbackup')
-
+from .command import subparsers
 
 class Task(object):
     def run(self):
-        print ' '.join(self.command)
-        subprocess.check_call(self.command, close_fds=True)
+        command = [sys.executable, sys.argv[0]] + list(self.args)
+        print ' '.join(command)
+        subprocess.check_call(command, close_fds=True)
 
 
 class Source(object):
@@ -64,12 +57,11 @@ class BucketTask(Task):
     def __init__(self, settings, name, force_s3_acls=False):
         Task.__init__(self)
         out_dir = os.path.join(settings['root'], 'rgw', name)
-        self.command = [sys.executable, RGWBACKUP, '-v',
-                settings['rgw-server'], name, out_dir]
+        self.args = ['rgwbackup', '-v', settings['rgw-server'], name, out_dir]
         if settings.get('rgw-secure', False):
-            self.command.append('-s')
+            self.args.append('-s')
         if force_s3_acls:
-            self.command.append('-A')
+            self.args.append('-A')
 
 
 class RGWSource(Source):
@@ -89,7 +81,7 @@ class ImageTask(Task):
         Task.__init__(self)
         out_path = os.path.join(settings['root'], 'rbd', pool,
                 self.SECTION, friendly_name)
-        self.command = [sys.executable, RBDBACKUP, pool, name, out_path]
+        self.args = ['rbdbackup', pool, name, out_path]
 
 
 class SnapshotTask(ImageTask):
@@ -97,7 +89,7 @@ class SnapshotTask(ImageTask):
 
     def __init__(self, settings, pool, name, friendly_name):
         ImageTask.__init__(self, settings, pool, name, friendly_name)
-        self.command.append('-s')
+        self.args.append('-s')
 
 
 class RBDSource(Source):
@@ -120,15 +112,15 @@ class RsyncTask(Task):
         Task.__init__(self)
         out_path = os.path.join(settings['root'], 'rsync',
                 hostname.split('.')[0])
-        self.command = [sys.executable, RSYNCBACKUP, '-v', hostname, out_path]
-        self.command.extend(info['mounts'])
+        self.args = ['rsyncbackup', '-v', hostname, out_path]
+        self.args.extend(info['mounts'])
         for rule in chain(settings.get('rsync-exclude', []),
                 info.get('exclude', [])):
-            self.command.extend(['-x', rule])
+            self.args.extend(['-x', rule])
         if 'pre' in info:
-            self.command.extend(['--pre', info['pre']])
+            self.args.extend(['--pre', info['pre']])
         if 'post' in info:
-            self.command.extend(['--post', info['post']])
+            self.args.extend(['--post', info['post']])
 
 
 class RsyncSource(Source):
@@ -145,14 +137,13 @@ class CodaTask(Task):
         Task.__init__(self)
         out_path = os.path.join(settings['root'], 'coda',
                 server.split('.')[0], volume)
-        self.command = [sys.executable, CODABACKUP, '-v', server, volume,
-                out_path]
+        self.args = ['codabackup', '-v', server, volume, out_path]
         if random.random() >= settings.get('coda-full-probability', 0.143):
-            self.command.append('-i')
+            self.args.append('-i')
         for prog in 'volutil', 'codadump2tar':
             path = settings.get('coda-%s-path' % prog)
             if path is not None:
-                self.command.extend(['--%s' % prog, path])
+                self.args.extend(['--%s' % prog, path])
 
 
 class CodaSource(Source):
@@ -195,8 +186,19 @@ def create_snapshot(settings):
             '-n', snapshot_lv, '--addtag', 'backup-snapshot'])
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
+def cmd_run(args):
+    with open(args.config_path) as fh:
+        config = yaml.safe_load(fh)
+
+    run_tasks(config, args.options, args.sources)
+    if args.snapshot:
+        create_snapshot(config['settings'])
+
+
+def _setup():
+    parser = subparsers.add_parser('run',
+            help='run a backup')
+    parser.set_defaults(func=cmd_run)
     parser.add_argument('config_path', metavar='config-path',
             help='path to config file')
     parser.add_argument('-o', '--opt', dest='options', action='append',
@@ -209,11 +211,5 @@ if __name__ == '__main__':
     parser.add_argument('-S', '--no-snapshot', dest='snapshot',
             action='store_false', default=True,
             help='skip snapshot of backup volume')
-    args = parser.parse_args()
 
-    with open(args.config_path) as fh:
-        config = yaml.safe_load(fh)
-
-    run_tasks(config, args.options, args.sources)
-    if args.snapshot:
-        create_snapshot(config['settings'])
+_setup()

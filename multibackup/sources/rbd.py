@@ -1,11 +1,10 @@
-#!/usr/bin/env python
-
-import argparse
 import json
 import os
 import subprocess
 import sys
 import uuid
+
+from ..command import subparsers
 
 BLOCKSIZE = 256 << 10
 
@@ -101,8 +100,17 @@ def store_image(pool, image, path):
         rbd_exec(pool, 'snap', 'rm', '-i', image, '--snap', temp_snapshot)
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
+def cmd_rbdbackup(args):
+    if args.snapshot:
+        store_snapshot(args.pool, args.object_name, args.out_path)
+    else:
+        store_image(args.pool, args.object_name, args.out_path)
+
+
+def _setup():
+    parser = subparsers.add_parser('rbdbackup',
+            help='back up RBD image or snapshot')
+    parser.set_defaults(func=cmd_rbdbackup)
     parser.add_argument('pool',
             help='pool name')
     parser.add_argument('object_name', metavar='image-or-snapshot',
@@ -111,9 +119,5 @@ if __name__ == '__main__':
             help='path to output file')
     parser.add_argument('-s', '--snapshot', action='store_true',
             help='requested object is a snapshot')
-    args = parser.parse_args()
 
-    if args.snapshot:
-        store_snapshot(args.pool, args.object_name, args.out_path)
-    else:
-        store_image(args.pool, args.object_name, args.out_path)
+_setup()
