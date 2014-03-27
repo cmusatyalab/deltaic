@@ -214,7 +214,7 @@ def update_dir_from_tar(tar, root_dir, verbose=0):
     return valid_paths
 
 
-def update_dir(backup_id, root_dir, incremental=False, verbose=0,
+def update_dir(host, backup_id, root_dir, incremental=False, verbose=0,
         volutil=None, codadump2tar=None):
     if codadump2tar is None:
         codadump2tar = 'codadump2tar'
@@ -274,7 +274,7 @@ def sync_backup_volume(host, volume, root_dir, incremental=False, verbose=0,
     # Retry dump a few times to paper over rpc2 timeouts
     for tries_remaining in range(4, -1, -1):
         try:
-            valid_paths = update_dir(backup_id, root_dir,
+            valid_paths = update_dir(host, backup_id, root_dir,
                     incremental=incremental, verbose=verbose, volutil=volutil,
                     codadump2tar=codadump2tar)
             break
