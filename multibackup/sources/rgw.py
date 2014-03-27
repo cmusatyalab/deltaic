@@ -5,11 +5,13 @@ import json
 from multiprocessing import Pool
 import os
 from pybloom import ScalableBloomFilter
+import random
 import subprocess
 import sys
 import time
 
 from ..command import make_subcommand_group
+from ..source import Task, Source
 
 KEY_METADATA_ATTRS = {
     'cache_control': 'Cache-Control',
@@ -276,3 +278,21 @@ def _setup():
             help='update ACLs for unmodified keys')
 
 _setup()
+
+
+class BucketTask(Task):
+    def __init__(self, settings, name):
+        Task.__init__(self)
+        self.args = ['rgw', 'backup', name]
+        force_acl_prob = settings.get('rgw-force-acl-probability', 0.0166)
+        if random.random() < force_acl_prob:
+            self.args.append('-A')
+
+
+class RGWSource(Source):
+    LABEL = 'rgw'
+
+    def __init__(self, config):
+        Source.__init__(self, config)
+        for name in self._manifest:
+            self._queue.put(BucketTask(self._settings, name))

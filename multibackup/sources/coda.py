@@ -1,5 +1,6 @@
 import os
 from pybloom import ScalableBloomFilter
+import random
 import re
 import shutil
 import stat
@@ -8,6 +9,7 @@ import tarfile
 import xattr
 
 from ..command import make_subcommand_group
+from ..source import Task, Source
 
 ATTR_INCREMENTAL = 'user.coda.incremental-ok'
 ATTR_MODE = 'user.coda.mode'
@@ -317,3 +319,22 @@ def _setup():
             help='show volutil output')
 
 _setup()
+
+
+class CodaTask(Task):
+    def __init__(self, settings, server, volume):
+        Task.__init__(self)
+        self.args = ['coda', 'backup', server, volume]
+        if random.random() >= settings.get('coda-full-probability', 0.143):
+            self.args.append('-i')
+
+
+class CodaSource(Source):
+    LABEL = 'coda'
+
+    def __init__(self, config):
+        Source.__init__(self, config)
+        for group in self._manifest:
+            for volume in group['volumes']:
+                for server in group['servers']:
+                    self._queue.put(CodaTask(self._settings, server, volume))

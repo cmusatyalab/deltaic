@@ -5,6 +5,7 @@ import sys
 import uuid
 
 from ..command import make_subcommand_group
+from ..source import Task, Source
 
 BLOCKSIZE = 256 << 10
 
@@ -127,3 +128,27 @@ def _setup():
             help='requested object is a snapshot')
 
 _setup()
+
+
+class ImageTask(Task):
+    def __init__(self, pool, friendly_name):
+        Task.__init__(self)
+        self.args = ['rbd', 'backup', pool, friendly_name]
+
+
+class SnapshotTask(ImageTask):
+    def __init__(self, pool, friendly_name):
+        ImageTask.__init__(self, pool, friendly_name)
+        self.args.append('-s')
+
+
+class RBDSource(Source):
+    LABEL = 'rbd'
+
+    def __init__(self, config):
+        Source.__init__(self, config)
+        for pool, info in self._manifest.items():
+            for friendly_name in info.get('images', {}):
+                self._queue.put(ImageTask(pool, friendly_name))
+            for friendly_name in info.get('snapshots', {}):
+                self._queue.put(SnapshotTask(pool, friendly_name))

@@ -3,6 +3,7 @@ import subprocess
 import sys
 
 from ..command import make_subcommand_group
+from ..source import Task, Source
 
 def remote_command(host, command):
     args = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no',
@@ -54,3 +55,18 @@ def _setup():
             help='host to back up')
 
 _setup()
+
+
+class RsyncTask(Task):
+    def __init__(self, hostname):
+        Task.__init__(self)
+        self.args = ['rsync', 'backup', hostname]
+
+
+class RsyncSource(Source):
+    LABEL = 'rsync'
+
+    def __init__(self, config):
+        Source.__init__(self, config)
+        for hostname in sorted(self._manifest):
+            self._queue.put(RsyncTask(hostname))
