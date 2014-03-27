@@ -9,6 +9,11 @@ def _get_default_config_path():
 _default_config_path = _get_default_config_path()
 
 
+def make_subcommand_group(name, help):
+    subparser = subparsers.add_parser(name, help=help)
+    return subparser.add_subparsers(metavar='COMMAND')
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument('-c', '--config-file', metavar='PATH',
         default=_default_config_path,

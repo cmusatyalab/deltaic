@@ -4,7 +4,7 @@ import subprocess
 import sys
 import uuid
 
-from ..command import subparsers
+from ..command import make_subcommand_group
 
 BLOCKSIZE = 256 << 10
 
@@ -108,7 +108,10 @@ def cmd_rbdbackup(config, args):
 
 
 def _setup():
-    parser = subparsers.add_parser('rbdbackup',
+    group = make_subcommand_group('rbd',
+            help='RBD image/snapshot support')
+
+    parser = group.add_parser('backup',
             help='back up RBD image or snapshot')
     parser.set_defaults(func=cmd_rbdbackup)
     parser.add_argument('pool',

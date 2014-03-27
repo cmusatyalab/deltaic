@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 
-from ..command import subparsers
+from ..command import make_subcommand_group
 
 KEY_METADATA_ATTRS = {
     'cache_control': 'Cache-Control',
@@ -262,7 +262,10 @@ def cmd_rgwbackup(config, args):
 
 
 def _setup():
-    parser = subparsers.add_parser('rgwbackup',
+    group = make_subcommand_group('rgw',
+            help='radosgw support')
+
+    parser = group.add_parser('backup',
             help='back up radosgw bucket')
     parser.set_defaults(func=cmd_rgwbackup)
     parser.add_argument('server',

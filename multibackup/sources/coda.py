@@ -7,7 +7,7 @@ import subprocess
 import tarfile
 import xattr
 
-from ..command import subparsers
+from ..command import make_subcommand_group
 
 ATTR_INCREMENTAL = 'user.coda.incremental-ok'
 ATTR_MODE = 'user.coda.mode'
@@ -300,7 +300,10 @@ def cmd_codabackup(config, args):
 
 
 def _setup():
-    parser = subparsers.add_parser('codabackup',
+    group = make_subcommand_group('coda',
+            help='Coda support')
+
+    parser = group.add_parser('backup',
             help='back up Coda volume')
     parser.set_defaults(func=cmd_codabackup)
     parser.add_argument('host',

@@ -2,7 +2,7 @@ import os
 import subprocess
 import sys
 
-from ..command import subparsers
+from ..command import make_subcommand_group
 
 def remote_command(host, command):
     args = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no',
@@ -38,8 +38,11 @@ def cmd_rsyncbackup(config, args):
 
 
 def _setup():
-    parser = subparsers.add_parser('rsyncbackup',
-            help='back up host filesystem via rsync')
+    group = make_subcommand_group('rsync',
+            help='host filesystem support via rsync')
+
+    parser = group.add_parser('backup',
+            help='back up host filesystem')
     parser.set_defaults(func=cmd_rsyncbackup)
     parser.add_argument('host',
             help='host to back up')
