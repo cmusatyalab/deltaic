@@ -30,11 +30,11 @@ def sync_host(host, root_dir, mounts, exclude=(), verbose=False):
 
 def cmd_rsyncbackup(config, args):
     if args.pre:
-        remote_command(host, args.pre)
+        remote_command(args.host, args.pre)
     sync_host(args.host, args.root_dir, args.mounts, args.exclude,
             verbose=args.verbose)
     if args.post:
-        remote_command(host, args.post)
+        remote_command(args.host, args.post)
 
 
 def _setup():
