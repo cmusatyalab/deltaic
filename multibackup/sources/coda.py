@@ -283,7 +283,7 @@ def sync_backup_volume(host, volume, root_dir, incremental=False,
     update_xattr(root_xattrs, ATTR_INCREMENTAL, '')
 
 
-def cmd_codabackup(config, args):
+def cmd_coda_backup(config, args):
     if args.refresh:
         refresh_backup_volume(args.host, args.volume, verbose=args.verbose,
                 volutil=args.volutil)
@@ -298,7 +298,7 @@ def _setup():
 
     parser = group.add_parser('backup',
             help='back up Coda volume')
-    parser.set_defaults(func=cmd_codabackup)
+    parser.set_defaults(func=cmd_coda_backup)
     parser.add_argument('host',
             help='Coda server hostname')
     parser.add_argument('volume',

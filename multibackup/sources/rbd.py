@@ -100,7 +100,7 @@ def store_image(pool, image, path):
         rbd_exec(pool, 'snap', 'rm', '-i', image, '--snap', temp_snapshot)
 
 
-def cmd_rbdbackup(config, args):
+def cmd_rbd_backup(config, args):
     if args.snapshot:
         store_snapshot(args.pool, args.object_name, args.out_path)
     else:
@@ -113,7 +113,7 @@ def _setup():
 
     parser = group.add_parser('backup',
             help='back up RBD image or snapshot')
-    parser.set_defaults(func=cmd_rbdbackup)
+    parser.set_defaults(func=cmd_rbd_backup)
     parser.add_argument('pool',
             help='pool name')
     parser.add_argument('object_name', metavar='image-or-snapshot',

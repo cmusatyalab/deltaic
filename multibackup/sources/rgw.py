@@ -253,7 +253,7 @@ def sync_bucket(server, bucket_name, root_dir, workers, force_acls, secure):
             pass
 
 
-def cmd_rgwbackup(config, args):
+def cmd_rgw_backup(config, args):
     sync_bucket(args.server, args.bucket, args.root_dir, workers=args.workers,
             force_acls=args.force_acls, secure=args.secure)
 
@@ -264,7 +264,7 @@ def _setup():
 
     parser = group.add_parser('backup',
             help='back up radosgw bucket')
-    parser.set_defaults(func=cmd_rgwbackup)
+    parser.set_defaults(func=cmd_rgw_backup)
     parser.add_argument('server',
             help='server hostname')
     parser.add_argument('bucket',

@@ -26,7 +26,7 @@ def sync_host(host, root_dir, mounts, exclude=()):
         raise Exception('rsync failed with code %d' % ret)
 
 
-def cmd_rsyncbackup(config, args):
+def cmd_rsync_backup(config, args):
     if args.pre:
         remote_command(args.host, args.pre)
     sync_host(args.host, args.root_dir, args.mounts, args.exclude)
@@ -40,7 +40,7 @@ def _setup():
 
     parser = group.add_parser('backup',
             help='back up host filesystem')
-    parser.set_defaults(func=cmd_rsyncbackup)
+    parser.set_defaults(func=cmd_rsync_backup)
     parser.add_argument('host',
             help='host to back up')
     parser.add_argument('root_dir', metavar='out-dir',
