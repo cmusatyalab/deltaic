@@ -89,12 +89,11 @@ class RBDSource(Source):
 
     def __init__(self, config, options):
         Source.__init__(self, config)
-        for pool, info in self._manifest.get('images', {}).items():
-            for friendly_name, name in info.items():
+        for pool, info in self._manifest.items():
+            for friendly_name, name in info.get('images', {}).items():
                 self._queue.put(ImageTask(self._settings, pool, name,
                         friendly_name))
-        for pool, info in self._manifest.get('snapshots', {}).items():
-            for friendly_name, name in info.items():
+            for friendly_name, name in info.get('snapshots', {}).items():
                 self._queue.put(SnapshotTask(self._settings, pool, name,
                         friendly_name))
 

@@ -26,12 +26,11 @@ rgw:
   - bucket1
   - bucket2
 rbd:
-  images:
-    pool-1:
+  pool-1:
+    images:
       foo-data: volume-be220107-966d-4253-93c7-d33cdfe18166
       bar: volume-64c39781-8c86-433b-9952-82200bb476a6
-  snapshots:
-    pool-1:
+    snapshots:
       foo-data-20140301: snapshot-d023e06a-15c2-4c9f-953c-7d22b2fb5b39
 coda:
   -
