@@ -101,10 +101,13 @@ def store_image(pool, image, path):
 
 
 def cmd_rbd_backup(config, args):
+    settings = config['settings']
+    out_path = os.path.join(settings['root'], 'rbd', args.pool,
+            'snapshots' if args.snapshot else 'images', args.friendly_name)
     if args.snapshot:
-        store_snapshot(args.pool, args.object_name, args.out_path)
+        store_snapshot(args.pool, args.object_name, out_path)
     else:
-        store_image(args.pool, args.object_name, args.out_path)
+        store_image(args.pool, args.object_name, out_path)
 
 
 def _setup():
@@ -118,8 +121,8 @@ def _setup():
             help='pool name')
     parser.add_argument('object_name', metavar='image-or-snapshot',
             help='image or snapshot name')
-    parser.add_argument('out_path', metavar='out-path',
-            help='path to output file')
+    parser.add_argument('-n', '--friendly-name', metavar='NAME',
+            help='short name for image or snapshot')
     parser.add_argument('-s', '--snapshot', action='store_true',
             help='requested object is a snapshot')
 

@@ -55,8 +55,7 @@ class Source(object):
 class BucketTask(Task):
     def __init__(self, settings, name, force_s3_acls=False):
         Task.__init__(self)
-        out_dir = os.path.join(settings['root'], 'rgw', name)
-        self.args = ['rgw', 'backup', settings['rgw-server'], name, out_dir]
+        self.args = ['rgw', 'backup', settings['rgw-server'], name]
         if settings.get('rgw-secure', False):
             self.args.append('-s')
         if force_s3_acls:
@@ -74,18 +73,12 @@ class RGWSource(Source):
 
 
 class ImageTask(Task):
-    SECTION = 'images'
-
     def __init__(self, settings, pool, name, friendly_name):
         Task.__init__(self)
-        out_path = os.path.join(settings['root'], 'rbd', pool,
-                self.SECTION, friendly_name)
-        self.args = ['rbd', 'backup', pool, name, out_path]
+        self.args = ['rbd', 'backup', '-n', friendly_name, pool, name]
 
 
 class SnapshotTask(ImageTask):
-    SECTION = 'snapshots'
-
     def __init__(self, settings, pool, name, friendly_name):
         ImageTask.__init__(self, settings, pool, name, friendly_name)
         self.args.append('-s')
@@ -109,9 +102,7 @@ class RBDSource(Source):
 class RsyncTask(Task):
     def __init__(self, settings, hostname, info):
         Task.__init__(self)
-        out_path = os.path.join(settings['root'], 'rsync',
-                hostname.split('.')[0])
-        self.args = ['rsync', 'backup', hostname, out_path]
+        self.args = ['rsync', 'backup', hostname]
         self.args.extend(info['mounts'])
         for rule in chain(settings.get('rsync-exclude', []),
                 info.get('exclude', [])):
@@ -134,9 +125,7 @@ class RsyncSource(Source):
 class CodaTask(Task):
     def __init__(self, settings, server, volume):
         Task.__init__(self)
-        out_path = os.path.join(settings['root'], 'coda',
-                server.split('.')[0], volume)
-        self.args = ['coda', 'backup', server, volume, out_path]
+        self.args = ['coda', 'backup', server, volume]
         if random.random() >= settings.get('coda-full-probability', 0.143):
             self.args.append('-i')
         for prog in 'volutil', 'codadump2tar':

@@ -254,7 +254,9 @@ def sync_bucket(server, bucket_name, root_dir, workers, force_acls, secure):
 
 
 def cmd_rgw_backup(config, args):
-    sync_bucket(args.server, args.bucket, args.root_dir, workers=args.workers,
+    settings = config['settings']
+    root_dir = os.path.join(settings['root'], 'rgw', args.bucket)
+    sync_bucket(args.server, args.bucket, root_dir, workers=args.workers,
             force_acls=args.force_acls, secure=args.secure)
 
 
@@ -269,8 +271,6 @@ def _setup():
             help='server hostname')
     parser.add_argument('bucket',
             help='bucket name')
-    parser.add_argument('root_dir', metavar='out-dir',
-            help='path to output directory')
     parser.add_argument('-A', '--force-acls', action='store_true',
             help='update ACLs for unmodified keys')
     parser.add_argument('-j', '--jobs', metavar='COUNT', dest='workers',

@@ -27,9 +27,11 @@ def sync_host(host, root_dir, mounts, exclude=()):
 
 
 def cmd_rsync_backup(config, args):
+    settings = config['settings']
+    root_dir = os.path.join(settings['root'], 'rsync', args.host.split('.')[0])
     if args.pre:
         remote_command(args.host, args.pre)
-    sync_host(args.host, args.root_dir, args.mounts, args.exclude)
+    sync_host(args.host, root_dir, args.mounts, args.exclude)
     if args.post:
         remote_command(args.host, args.post)
 
@@ -43,8 +45,6 @@ def _setup():
     parser.set_defaults(func=cmd_rsync_backup)
     parser.add_argument('host',
             help='host to back up')
-    parser.add_argument('root_dir', metavar='out-dir',
-            help='path to output directory')
     parser.add_argument('mounts', metavar='mount', nargs='+',
             help='filesystem mount point to copy')
     parser.add_argument('--pre', metavar='COMMAND',
