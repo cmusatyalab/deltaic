@@ -52,21 +52,21 @@ class Source(object):
 
 
 class BucketTask(Task):
-    def __init__(self, name, force_s3_acls=False):
+    def __init__(self, settings, name):
         Task.__init__(self)
         self.args = ['rgw', 'backup', name]
-        if force_s3_acls:
+        force_acl_prob = settings.get('rgw-force-acl-probability', 0.0166)
+        if random.random() < force_acl_prob:
             self.args.append('-A')
 
 
 class RGWSource(Source):
     LABEL = 'rgw'
 
-    def __init__(self, config, options):
+    def __init__(self, config):
         Source.__init__(self, config)
         for name in self._manifest:
-            self._queue.put(BucketTask(name,
-                    force_s3_acls='rgw-force-acls' in options))
+            self._queue.put(BucketTask(self._settings, name))
 
 
 class ImageTask(Task):
@@ -84,7 +84,7 @@ class SnapshotTask(ImageTask):
 class RBDSource(Source):
     LABEL = 'rbd'
 
-    def __init__(self, config, options):
+    def __init__(self, config):
         Source.__init__(self, config)
         for pool, info in self._manifest.items():
             for friendly_name in info.get('images', {}):
@@ -102,7 +102,7 @@ class RsyncTask(Task):
 class RsyncSource(Source):
     LABEL = 'rsync'
 
-    def __init__(self, config, options):
+    def __init__(self, config):
         Source.__init__(self, config)
         for hostname in sorted(self._manifest):
             self._queue.put(RsyncTask(hostname))
@@ -119,7 +119,7 @@ class CodaTask(Task):
 class CodaSource(Source):
     LABEL = 'coda'
 
-    def __init__(self, config, options):
+    def __init__(self, config):
         Source.__init__(self, config)
         for group in self._manifest:
             for volume in group['volumes']:
@@ -127,11 +127,11 @@ class CodaSource(Source):
                     self._queue.put(CodaTask(self._settings, server, volume))
 
 
-def run_tasks(config, options, source_names):
+def run_tasks(config, source_names):
     source_map = Source.get_sources()
     sources = []
     for name in source_names:
-        source = source_map[name](config, options)
+        source = source_map[name](config)
         source.start()
         sources.append(source)
     for source in sources:
@@ -157,7 +157,7 @@ def create_snapshot(settings):
 
 
 def cmd_run(config, args):
-    run_tasks(config, args.options, args.sources)
+    run_tasks(config, args.sources)
     if args.snapshot:
         create_snapshot(config['settings'])
 
@@ -166,9 +166,6 @@ def _setup():
     parser = subparsers.add_parser('run',
             help='run a backup')
     parser.set_defaults(func=cmd_run)
-    parser.add_argument('-o', '--opt', dest='options', action='append',
-            default=[], metavar='OPTION',
-            help='option string for source drivers')
     source_list = ', '.join(sorted(Source.get_sources()))
     parser.add_argument('-s', '--source', dest='sources', action='append',
             default=[], metavar='SOURCE',

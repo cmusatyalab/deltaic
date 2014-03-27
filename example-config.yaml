@@ -4,6 +4,7 @@ settings:
   coda-full-probability: 0.5
   coda-volutil-path: /usr/sbin/volutil
   coda-codadump2tar-path: /usr/sbin/codadump2tar
+  rgw-force-acl-probability: 0.01
   rgw-server: storage.example.org
   rgw-secure: false
   rgw-threads: 4
