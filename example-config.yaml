@@ -4,6 +4,9 @@ settings:
   coda-full-probability: 0.5
   coda-volutil-path: /usr/sbin/volutil
   coda-codadump2tar-path: /usr/sbin/codadump2tar
+  gc-duplicate-days: 14
+  gc-daily-weeks: 8
+  gc-weekly-months: 12
   rgw-force-acl-probability: 0.01
   rgw-server: storage.example.org
   rgw-secure: false
