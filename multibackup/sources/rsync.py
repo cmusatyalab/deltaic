@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import sys
 
@@ -24,9 +25,17 @@ def sync_host(host, root_dir, mounts, exclude=(), rsync=None):
     args.append(root_dir.rstrip('/'))
 
     print ' '.join(args)
-    ret = subprocess.call(args)
-    if ret not in (0, 24):
-        raise Exception('rsync failed with code %d' % ret)
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE)
+
+    # Filter out spurious log output from
+    # https://bugzilla.samba.org/show_bug.cgi?id=10496
+    spurious = re.compile(r'[.h][dfL]\.{8}x ')
+    for line in proc.stdout:
+        if not spurious.match(line):
+            print line.strip()
+
+    if proc.wait() not in (0, 24):
+        raise Exception('rsync failed with code %d' % proc.returncode)
 
 
 def cmd_rsync_backup(config, args):
