@@ -18,7 +18,7 @@ def cmd_run(config, args):
     run_tasks(config, args.sources)
     if args.snapshot:
         vg, lv = config['settings']['backup-lv'].split('/')
-        Snapshot.create(vg, lv)
+        Snapshot.create(vg, lv, verbose=True)
 
 
 def _setup():
