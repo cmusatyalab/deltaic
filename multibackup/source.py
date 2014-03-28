@@ -4,8 +4,10 @@ import sys
 from threading import Thread
 
 class Task(object):
-    def run(self):
-        command = [sys.executable, sys.argv[0]] + list(self.args)
+    def run(self, global_args=None):
+        command = [sys.executable, sys.argv[0]]
+        command.extend(global_args or [])
+        command.extend(self.args)
         print ' '.join(command)
         subprocess.check_call(command, close_fds=True)
 
@@ -26,19 +28,19 @@ class Source(object):
                 sources[subclass.LABEL] = subclass
         return sources
 
-    def start(self):
+    def start(self, global_args=None):
         for n in range(self._thread_count):
-            thread = Thread(target=self._worker)
+            thread = Thread(target=self._worker, args=(global_args,))
             thread.start()
             self._threads.append(thread)
 
-    def _worker(self):
+    def _worker(self, global_args):
         while True:
             try:
                 task = self._queue.get_nowait()
             except Queue.Empty:
                 return
-            task.run()
+            task.run(global_args)
 
     def wait(self):
         for thread in self._threads:

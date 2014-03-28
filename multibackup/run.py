@@ -1,21 +1,24 @@
-from .command import subparsers
+from .command import parser, subparsers
 from .lvm import Snapshot
 from .source import Source
 from . import sources as _  # Load all sources
 
-def run_tasks(config, source_names):
+def run_tasks(config, source_names, global_args=None):
     source_map = Source.get_sources()
     sources = []
     for name in source_names:
         source = source_map[name](config)
-        source.start()
+        source.start(global_args)
         sources.append(source)
     for source in sources:
         source.wait()
 
 
 def cmd_run(config, args):
-    run_tasks(config, args.sources)
+    global_args = []
+    if args.config_file != parser.get_default('config_file'):
+        global_args.extend(['-c', args.config_file])
+    run_tasks(config, args.sources, global_args)
     if args.snapshot:
         vg, lv = config['settings']['backup-lv'].split('/')
         Snapshot.create(vg, lv, verbose=True)
