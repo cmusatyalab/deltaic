@@ -1,53 +1,7 @@
-from __future__ import division
-from datetime import date, datetime, timedelta
-import subprocess
+from datetime import date, timedelta
 
 from .command import subparsers
-
-class Snapshot(object):
-    def __init__(self, vg, name):
-        self.vg = vg
-        self.name = name
-        datecode, revision = name.split('-')
-        self.date = datetime.strptime(datecode, '%Y%m%d').date()
-        self.revision = int(revision)
-        self.year, self.week, self.day = self.date.isocalendar()
-        # 4, 7-day weeks/month => 13 months/year, 14 on long years
-        self.month = ((self.week - 1) // 4) + 1
-
-    def __str__(self):
-        return '%s/%s' % (self.vg, self.name)
-
-    def __repr__(self):
-        return 'Snapshot(%s, %s)' % (repr(self.vg), repr(self.name))
-
-    def __cmp__(self, other):
-        if not isinstance(other, self.__class__):
-            return hash(other) - hash(self)
-        if self.date < other.date:
-            return -1
-        elif self.date > other.date:
-            return 1
-        else:
-            return self.revision - other.revision
-
-    def remove(self, verbose=False):
-        with open('/dev/null', 'r+') as null:
-            subprocess.check_call(['sudo', 'lvremove',
-                    '%s/%s' % (self.vg, self.name)], stdin=null,
-                    stdout=None if verbose else null)
-
-
-def get_snapshots(settings):
-    backup_lv = settings['backup-lv']
-    vg = backup_lv.split('/')[0]
-    proc = subprocess.Popen(['sudo', 'lvs', '--noheadings', '-o', 'lv_name',
-            '@backup-snapshot'], stdout=subprocess.PIPE)
-    out, _ = proc.communicate()
-    if proc.returncode:
-        raise IOError("Couldn't list snapshot LVs")
-    return [Snapshot(vg, l.strip()) for l in out.split('\n') if l]
-
+from .lvm import Snapshot
 
 def select_snapshots_to_remove(settings, snapshots):
     conf_duplicate_days = settings.get('gc-duplicate-days', 14)
@@ -98,7 +52,7 @@ def select_snapshots_to_remove(settings, snapshots):
 
 def cmd_prune(config, args):
     settings = config['settings']
-    snapshots = get_snapshots(settings)
+    snapshots = Snapshot.list()
     remove = select_snapshots_to_remove(settings, snapshots)
     for cur in sorted(remove):
         if args.dry_run:
