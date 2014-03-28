@@ -18,7 +18,7 @@ def select_snapshots_to_remove(settings, snapshots):
     prev = None
     for cur in sorted(snapshots, reverse=True):
         if (prev is None or prev.date != cur.date or
-                cur.date >= duplicate_thresh):
+                cur.date > duplicate_thresh):
             filtered.insert(0, cur)
         prev = cur
 
@@ -31,10 +31,10 @@ def select_snapshots_to_remove(settings, snapshots):
         if prev.date == cur.date:
             return True
         # Keep daily backups for gc-daily-weeks weeks
-        if cur.date >= daily_thresh and prev.date != cur.date:
+        if cur.date > daily_thresh and prev.date != cur.date:
             return True
         # Keep weekly backups for gc-weekly-months 28-day months
-        if cur.date >= weekly_thresh and (prev.year != cur.year or
+        if cur.date > weekly_thresh and (prev.year != cur.year or
                 prev.week != cur.week):
             return True
         # Keep monthly backups forever
