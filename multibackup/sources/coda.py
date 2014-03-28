@@ -12,8 +12,7 @@ from ..source import Task, Source
 from ..util import BloomSet
 
 ATTR_INCREMENTAL = 'user.coda.incremental-ok'
-ATTR_MODE = 'user.coda.mode'
-ATTR_UID = 'user.coda.uid'
+ATTR_STAT = 'user.rsync.%stat'
 BLOCKSIZE = 256 << 10
 
 class DumpError(Exception):
@@ -87,6 +86,17 @@ def update_dir_from_tar(tar, root_dir):
     directories = []
     valid_paths = BloomSet()
     for entry in tar:
+        # Convert entry type to stat constant
+        if entry.type == tarfile.DIRTYPE:
+            entry_stat_type = stat.S_IFDIR
+        elif entry.type in (tarfile.REGTYPE, tarfile.LNKTYPE):
+            # Coda apparently doesn't allow hard links to symlinks
+            entry_stat_type = stat.S_IFREG
+        elif entry.type == tarfile.SYMTYPE:
+            entry_stat_type = stat.S_IFLNK
+        else:
+            raise ValueError('Unexpected file type %d' % entry.type)
+
         # Check for existing file
         path = build_path(root_dir, entry.name)
         try:
@@ -96,15 +106,7 @@ def update_dir_from_tar(tar, root_dir):
 
         # If entry has changed types, remove the old object
         if st:
-            if entry.type == tarfile.DIRTYPE:
-                new_type = stat.S_IFDIR
-            elif entry.type in (tarfile.REGTYPE, tarfile.LNKTYPE):
-                new_type = stat.S_IFREG
-            elif entry.type == tarfile.SYMTYPE:
-                new_type = stat.S_IFLNK
-            else:
-                raise ValueError('Unexpected file type %d' % entry.type)
-            if stat.S_IFMT(st.st_mode) != new_type:
+            if stat.S_IFMT(st.st_mode) != entry_stat_type:
                 if stat.S_ISDIR(st.st_mode):
                     shutil.rmtree(path)
                 else:
@@ -158,15 +160,14 @@ def update_dir_from_tar(tar, root_dir):
 
         # Update metadata
         attrs = xattr.xattr(path, xattr.XATTR_NOFOLLOW)
-        # uid.  Hardlinks were updated with the primary, and we can't set
-        # xattrs on symlinks.
+        # owner and mode.  Hardlinks were updated with the primary, and we
+        # can't set xattrs on symlinks.
         if entry.isfile() or entry.isdir():
-            update_xattr(attrs, ATTR_UID, str(entry.uid))
-        # mode.  Directory modes in the dump are not meaningful, hardlinks
-        # were updated with the primary, and we can't set xattrs on
-        # symlinks.
-        if entry.isfile():
-            update_xattr(attrs, ATTR_MODE, oct(entry.mode))
+            # rsync --fake-super compatible:
+            # octal_mode_with_type major,minor uid:gid
+            update_xattr(attrs, ATTR_STAT,
+                    '%o 0,0 %d:%d' % (entry_stat_type | entry.mode,
+                    entry.uid, entry.gid))
         # mtime.  Directories will be updated later, hardlinks were updated
         # with the primary, and Python 2.x doesn't have os.lutimes() for
         # updating symlinks.
