@@ -1,3 +1,8 @@
+import errno
+import fcntl
+import os
+import sys
+
 from .command import parser, subparsers
 from .lvm import Snapshot
 from .source import Source
@@ -15,13 +20,26 @@ def run_tasks(config, source_names, global_args=None):
 
 
 def cmd_run(config, args):
+    settings = config['settings']
     global_args = []
     if args.config_file != parser.get_default('config_file'):
         global_args.extend(['-c', args.config_file])
-    run_tasks(config, args.sources, global_args)
-    if args.snapshot:
-        vg, lv = config['settings']['backup-lv'].split('/')
-        Snapshot.create(vg, lv, verbose=True)
+
+    lockfile = os.path.join(settings['root'], '.lock')
+    with open(lockfile, 'w') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except IOError, e:
+            if e.errno in (errno.EACCES, errno.EAGAIN):
+                print >>sys.stderr, 'Another backup is already running.'
+                sys.exit(1)
+            else:
+                raise
+
+        run_tasks(config, args.sources, global_args)
+        if args.snapshot:
+            vg, lv = settings['backup-lv'].split('/')
+            Snapshot.create(vg, lv, verbose=True)
 
 
 def _setup():
