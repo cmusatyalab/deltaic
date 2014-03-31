@@ -27,10 +27,6 @@ def rbd_pool_info(pool):
     return json.loads(out)
 
 
-def make_name(type):
-    return 'backup-%s-%s' % (type, uuid.uuid1())
-
-
 def read_items(fh, fmt):
     size = struct.calcsize(fmt)
     buf = fh.read(size)
@@ -112,7 +108,7 @@ def store_snapshot(pool, snapshot, path):
 
 
 def store_image(pool, image, path):
-    temp_snapshot = make_name('snapshot')
+    temp_snapshot = 'backup-%s' % uuid.uuid1()
     rbd_exec(pool, 'snap', 'create', '-i', image, '--snap', temp_snapshot)
     try:
         _store_snapshot(pool, image, temp_snapshot, path)
