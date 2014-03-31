@@ -8,6 +8,7 @@ import tarfile
 import xattr
 
 from ..command import make_subcommand_group
+from ..platform import lutime
 from ..source import Task, Source
 from ..util import BloomSet
 
@@ -168,12 +169,11 @@ def update_dir_from_tar(tar, root_dir):
             update_xattr(attrs, ATTR_STAT,
                     '%o 0,0 %d:%d' % (entry_stat_type | entry.mode,
                     entry.uid, entry.gid))
-        # mtime.  Directories will be updated later, hardlinks were updated
-        # with the primary, and Python 2.x doesn't have os.lutimes() for
-        # updating symlinks.
-        if entry.isfile():
-            if os.stat(path).st_mtime != entry.mtime:
-                os.utime(path, (entry.mtime, entry.mtime))
+        # mtime.  Directories will be updated later, and hardlinks were
+        # updated with the primary.
+        if entry.isfile() or entry.issym():
+            if os.lstat(path).st_mtime != entry.mtime:
+                lutime(path, entry.mtime)
 
         # Protect from garbage collection
         valid_paths.add(path)
