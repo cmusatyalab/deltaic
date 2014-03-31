@@ -1,13 +1,16 @@
 import json
 import os
+import struct
 import subprocess
 import sys
 import uuid
 
 from ..command import make_subcommand_group
+from ..platform import punch
 from ..source import Task, Source
 
 BLOCKSIZE = 256 << 10
+DIFF_MAGIC = 'rbd diff v1\n'
 
 def rbd_exec(pool, cmd, *args):
     cmdline = ['rbd', cmd] + list(args) + ['-p', pool]
@@ -28,31 +31,59 @@ def make_name(type):
     return 'backup-%s-%s' % (type, uuid.uuid1())
 
 
-def _sync_image_to_file(pool, image, path):
-    cmd = ['rbd', 'export', '--no-progress', '-p', pool, image, '-']
+def read_items(fh, fmt):
+    size = struct.calcsize(fmt)
+    buf = fh.read(size)
+    items = struct.unpack(fmt, buf)
+    if len(items) == 1:
+        return items[0]
+    else:
+        return items
+
+
+def _unpack_diff_to_file(pool, image, snapshot, path):
+    cmd = ['rbd', 'export-diff', '--no-progress', '-p', pool, image,
+            '--snap', snapshot, '-']
     print ' '.join(cmd)
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
-    # Update in place to avoid LVM snapshot COW
-    off = 0
-    zero = '\0' * BLOCKSIZE
+    ifh = proc.stdout
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0666)
-    with os.fdopen(fd, 'r+b') as fh:
+    with os.fdopen(fd, 'r+b') as ofh:
+        # Read header
+        buf = ifh.read(len(DIFF_MAGIC))
+        if buf != DIFF_MAGIC:
+            raise IOError('Missing diff magic string')
+        # Read each record
         while True:
-            ibuf = proc.stdout.read(BLOCKSIZE)
-            if not ibuf:
+            type = read_items(ifh, 'c')
+            if type in ('f', 't'):
+                # Source/dest snapshot name => ignore
+                size = read_items(ifh, '<I')
+                ifh.read(size)
+            elif type == 's':
+                # Image size
+                size = read_items(ifh, '<Q')
+                ofh.truncate(size)
+            elif type == 'w':
+                # Data
+                offset, length = read_items(ifh, '<QQ')
+                ofh.seek(offset)
+                while length > 0:
+                    buf = ifh.read(min(length, BLOCKSIZE))
+                    ofh.write(buf)
+                    length -= len(buf)
+            elif type == 'z':
+                # Zero data
+                offset, length = read_items(ifh, '<QQ')
+                punch(ofh, offset, length)
+            elif type == 'e':
+                if ifh.read(1) != '':
+                    raise IOError("Expected EOF, didn't find it")
                 break
-            count = len(ibuf)
-            obuf = fh.read(count)
-            if not obuf and ibuf == zero[:count]:
-                # Output file at EOF; input block all zeros => sparsify
-                fh.seek(off + count)
-            elif ibuf != obuf:
-                # Write new data
-                fh.seek(off)
-                fh.write(ibuf)
-            off += count
-        fh.truncate(off)
+            else:
+                raise ValueError('Unknown record type: %s' % type)
+
     if proc.wait():
         raise Exception('Export returned %d' % proc.returncode)
 
@@ -66,13 +97,7 @@ def _store_snapshot(pool, image, snapshot, path):
             # Lost the race with another process?
             pass
 
-    temp_image = make_name('image')
-    rbd_exec(pool, 'clone', '-i', image, '--snap', snapshot,
-            '--dest-pool', pool, '--dest', temp_image)
-    try:
-        _sync_image_to_file(pool, temp_image, path)
-    finally:
-        rbd_exec(pool, 'rm', '--no-progress', temp_image)
+    _unpack_diff_to_file(pool, image, snapshot, path)
 
 
 def store_snapshot(pool, snapshot, path):
