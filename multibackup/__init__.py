@@ -1,1 +1,1 @@
-from . import run, prune, sources
+from . import run, prune, template, sources
