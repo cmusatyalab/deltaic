@@ -115,13 +115,7 @@ def store_image(pool, image, path):
     temp_snapshot = make_name('snapshot')
     rbd_exec(pool, 'snap', 'create', '-i', image, '--snap', temp_snapshot)
     try:
-        rbd_exec(pool, 'snap', 'protect', '-i', image, '--snap',
-                temp_snapshot)
-        try:
-            _store_snapshot(pool, image, temp_snapshot, path)
-        finally:
-            rbd_exec(pool, 'snap', 'unprotect', '-i', image, '--snap',
-                    temp_snapshot)
+        _store_snapshot(pool, image, temp_snapshot, path)
     finally:
         rbd_exec(pool, 'snap', 'rm', '-i', image, '--snap', temp_snapshot)
 
