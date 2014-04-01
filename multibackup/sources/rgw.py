@@ -298,12 +298,13 @@ def upload_key(args):
 
 
 def restore_bucket(root_dir, server, dest_bucket_name, force, secure, workers):
-    # Check for root dir
-    if not os.path.exists(root_dir):
+    # Check for valid bucket dir
+    bucket_acl_path = key_name_to_path(root_dir, 'bucket', 'A')
+    if not os.path.exists(bucket_acl_path):
         raise IOError('No backups at %s' % root_dir)
 
     # Get bucket ACL and owner
-    with open(key_name_to_path(root_dir, 'bucket', 'A')) as fh:
+    with open(bucket_acl_path) as fh:
         bucket_acl = fh.read()
     owner = ET.fromstring(bucket_acl).find('{%(ns)s}Owner/{%(ns)s}ID' %
             {'ns': S3_NAMESPACE}).text
@@ -347,7 +348,10 @@ def cmd_rgw_backup(config, args):
 
 def cmd_rgw_restore(config, args):
     settings = config['settings']
-    root_dir = os.path.join(settings['root'], 'rgw', args.bucket)
+    if '/' in args.source:
+        root_dir = os.path.abspath(args.source)
+    else:
+        root_dir = os.path.join(settings['root'], 'rgw', args.source)
     server = settings['rgw-server']
     secure = settings.get('rgw-secure', False)
     workers = settings.get('rgw-threads', 4)
@@ -370,8 +374,8 @@ def _setup():
     parser = group.add_parser('restore',
             help='restore radosgw bucket')
     parser.set_defaults(func=cmd_rgw_restore)
-    parser.add_argument('bucket',
-            help='bucket name')
+    parser.add_argument('source', metavar='origin-bucket-or-path',
+            help='origin bucket name or filesystem path')
     parser.add_argument('dest_bucket', metavar='dest-bucket',
             help='destination bucket for restore')
     parser.add_argument('-f', '--force', action='store_true',
