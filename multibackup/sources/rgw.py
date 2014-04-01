@@ -8,6 +8,7 @@ import random
 import subprocess
 import sys
 import time
+import xml.etree.cElementTree as ET
 
 from ..command import make_subcommand_group
 from ..source import Task, Source
@@ -22,6 +23,16 @@ KEY_METADATA_ATTRS = {
     'etag': 'ETag',
     'last_modified': 'Last-Modified',
 }
+
+KEY_UPLOAD_HEADERS = set([
+    'cache-control',
+    'content-disposition',
+    'content-encoding',
+    'content-language',
+    'content-type',
+])
+
+S3_NAMESPACE = 'http://s3.amazonaws.com/doc/2006-03-01/'
 
 def warn(msg, *args):
     print >>sys.stderr, msg % args
@@ -38,9 +49,11 @@ def radosgw_admin(*args):
 
 def get_bucket_credentials(bucket_name):
     info = radosgw_admin('bucket', 'stats', '--bucket', bucket_name)
-    owner = info['owner']
+    return get_user_credentials(info['owner'])
 
-    info = radosgw_admin('user', 'info', '--uid', owner)
+
+def get_user_credentials(userid):
+    info = radosgw_admin('user', 'info', '--uid', userid)
     creds = info['keys'][0]
     return creds['access_key'], creds['secret_key']
 
@@ -107,8 +120,23 @@ def enumerate_keys(bucket):
     return iter(), names
 
 
-def pool_init(root_dir_, server, bucket_name, access_key, secret_key, secure,
-        force_acls_):
+def enumerate_keys_from_directory(root_dir):
+    def handle_err(err):
+        raise err
+    for dirpath, _, filenames in os.walk(root_dir, onerror=handle_err):
+        for filename in sorted(filenames):
+            filepath = os.path.join(dirpath, filename)
+            try:
+                _, code = split_type_code(filepath)
+            except ValueError:
+                continue
+            if code != 'k':
+                continue
+            yield path_to_key_name(root_dir, filepath)
+
+
+def sync_pool_init(root_dir_, server, bucket_name, access_key, secret_key,
+        secure, force_acls_):
     global root_dir, download_bucket, force_acls
     root_dir = root_dir_
     force_acls = force_acls_
@@ -184,7 +212,7 @@ def sync_bucket(server, bucket_name, root_dir, workers, force_acls, secure):
 
     # Keys
     start_time = time.time()
-    pool = Pool(workers, pool_init, [root_dir, server, bucket_name,
+    pool = Pool(workers, sync_pool_init, [root_dir, server, bucket_name,
             access_key, secret_key, secure, force_acls])
     iter, key_set = enumerate_keys(bucket)
     for path, error in pool.imap_unordered(sync_key, iter):
@@ -236,6 +264,77 @@ def sync_bucket(server, bucket_name, root_dir, workers, force_acls, secure):
             pass
 
 
+def upload_pool_init(root_dir_, server, bucket_name, access_key, secret_key,
+        secure):
+    global root_dir, upload_bucket
+    root_dir = root_dir_
+    conn = connect(server, access_key, secret_key, secure=secure)
+    upload_bucket = conn.get_bucket(bucket_name)
+
+
+def upload_key(args):
+    key_name = args
+    in_data = key_name_to_path(root_dir, key_name, 'k')
+    in_meta = key_name_to_path(root_dir, key_name, 'm')
+    in_acl = key_name_to_path(root_dir, key_name, 'a')
+
+    key = upload_bucket.new_key(key_name)
+    try:
+        with open(in_meta, 'rb') as fh:
+            meta = json.load(fh)
+        key.metadata.update(meta['metadata'])
+        headers = dict((k, v) for k, v in meta.items()
+                if k.lower() in KEY_UPLOAD_HEADERS)
+        with open(in_data, 'rb') as fh:
+            key.set_contents_from_file(fh, headers=headers)
+        with open(in_acl, 'rb') as fh:
+            key.set_xml_acl(fh.read())
+        return (key_name, None)
+    except Exception, e:
+        key.delete()
+        if isinstance(e, boto.exception.BotoServerError):
+            e = e.error_code
+        return (key_name, "Couldn't upload %s: %s" % (key_name, e))
+
+
+def restore_bucket(root_dir, server, dest_bucket_name, force, secure, workers):
+    # Check for root dir
+    if not os.path.exists(root_dir):
+        raise IOError('No backups at %s' % root_dir)
+
+    # Get bucket ACL and owner
+    with open(key_name_to_path(root_dir, 'bucket', 'A')) as fh:
+        bucket_acl = fh.read()
+    owner = ET.fromstring(bucket_acl).find('{%(ns)s}Owner/{%(ns)s}ID' %
+            {'ns': S3_NAMESPACE}).text
+
+    # Connect
+    access_key, secret_key = get_user_credentials(owner)
+    conn = connect(server, access_key, secret_key, secure=secure)
+
+    # Get or create bucket
+    bucket = conn.lookup(dest_bucket_name)
+    if bucket is None:
+        bucket = conn.create_bucket(dest_bucket_name)
+    elif not force and bucket.get_all_keys(max_keys=5):
+        raise IOError('Destination bucket is not empty; force with --force')
+
+    # Set bucket metadata
+    bucket.set_xml_acl(bucket_acl)
+
+    # Upload keys
+    pool = Pool(workers, upload_pool_init, [root_dir, server,
+            dest_bucket_name, access_key, secret_key, secure])
+    iter = enumerate_keys_from_directory(root_dir)
+    for path, error in pool.imap_unordered(upload_key, iter):
+        if error:
+            raise IOError(error)
+        elif path:
+            print path
+    pool.close()
+    pool.join()
+
+
 def cmd_rgw_backup(config, args):
     settings = config['settings']
     root_dir = os.path.join(settings['root'], 'rgw', args.bucket)
@@ -244,6 +343,16 @@ def cmd_rgw_backup(config, args):
     workers = settings.get('rgw-threads', 4)
     sync_bucket(server, args.bucket, root_dir, workers=workers,
             force_acls=args.force_acls, secure=secure)
+
+
+def cmd_rgw_restore(config, args):
+    settings = config['settings']
+    root_dir = os.path.join(settings['root'], 'rgw', args.bucket)
+    server = settings['rgw-server']
+    secure = settings.get('rgw-secure', False)
+    workers = settings.get('rgw-threads', 4)
+    restore_bucket(root_dir, server, args.dest_bucket, force=args.force,
+            workers=workers, secure=secure)
 
 
 def _setup():
@@ -257,6 +366,16 @@ def _setup():
             help='bucket name')
     parser.add_argument('-A', '--force-acls', action='store_true',
             help='update ACLs for unmodified keys')
+
+    parser = group.add_parser('restore',
+            help='restore radosgw bucket')
+    parser.set_defaults(func=cmd_rgw_restore)
+    parser.add_argument('bucket',
+            help='bucket name')
+    parser.add_argument('dest_bucket', metavar='dest-bucket',
+            help='destination bucket for restore')
+    parser.add_argument('-f', '--force', action='store_true',
+            help='force restore to non-empty bucket')
 
 _setup()
 
