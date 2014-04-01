@@ -4,8 +4,8 @@ import os
 import sys
 
 from .command import parser, subparsers
-from .lvm import Snapshot
 from .source import Source
+from .storage import Snapshot
 from . import sources as _  # Load all sources
 
 def run_tasks(config, source_names, global_args=None):
