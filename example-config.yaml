@@ -1,56 +1,129 @@
 settings:
+  ## Base configuration
+  # The root of the backup directory tree
+  # [required]
   root: /srv/backup
+  # The logical volume path (vg/lv) corresponding to the backup root
+  # [required]
   backup-lv: backups/current
-  coda-full-probability: 0.5
-  coda-volutil-path: /usr/sbin/volutil
-  coda-codadump2tar-path: /usr/sbin/codadump2tar
+
+  ## Garbage-collection timing
+  # The number of days to retain multiple snapshots per day
+  # [default: 14]
   gc-duplicate-days: 14
+  # The number of weeks to retain one backup per day
+  # [default: 8]
   gc-daily-weeks: 8
+  # The number of ISO 8601 (28-day) months to retain one backup per week
+  # [default: 12]
   gc-weekly-months: 12
-  rgw-force-acl-probability: 0.01
+
+  ## coda source
+  # The probability that a full dump will be perfomed on a Coda volume
+  # [default: 0.143]
+  coda-full-probability: 0.5
+  # The path to volutil on the Coda server
+  # [default: volutil]
+  coda-volutil-path: /usr/sbin/volutil
+  # The path to codadump2tar on the Coda server
+  # [default: codadump2tar]
+  coda-codadump2tar-path: /usr/sbin/codadump2tar
+  # Number of simultaneous backup jobs
+  # [default: 1]
+  coda-workers: 2
+
+  ## rbd source
+  # Number of simultaneous backup jobs
+  # [default: 1]
+  rbd-workers: 2
+
+  ## rgw source
+  # The radosgw server
+  # [required]
   rgw-server: storage.example.org
+  # Whether to connect to radosgw over SSL
+  # [default: false]
   rgw-secure: false
+  # The probability that object ACLs will be unconditionally fetched for a
+  # bucket, even for objects that have not changed
+  # [default: 0.0166]
+  rgw-force-acl-probability: 0.01
+  # Number of fetch threads per backup job
+  # [default: 4]
   rgw-threads: 4
+  # Number of simultaneous backup jobs
+  # [default: 1]
+  rgw-workers: 2
+
+  ## rsync source
+  # The path to rsync on the backup server
+  # [default: rsync]
   rsync-local-binary: /usr/local/bin/rsync
+  # A list of rsync exclude patterns to be applied to all backups
+  # [default: no exclusions]
   rsync-exclude:
     - /tmp/*
     - /var/tmp/*
-  coda-workers: 2
-  rbd-workers: 2
-  rgw-workers: 2
+  # Number of simultaneous backup jobs
+  # [default: 1]
   rsync-workers: 2
-rsync:
-  host1.example.org:
-    mounts: [/, /boot]
-  host2.example.org:
-    mounts: [/]
-    pre: /usr/local/bin/database_snapshot --create
-    post: /usr/local/bin/database_snapshot --delete
-    exclude:
-      - /var/lib/mysql/*
-rgw:
-  - bucket1
-  - bucket2
-rbd:
-  pool-1:
-    images:
-      foo-data: volume-be220107-966d-4253-93c7-d33cdfe18166
-      bar: volume-64c39781-8c86-433b-9952-82200bb476a6
-    snapshots:
-      foo-data-20140301: snapshot-d023e06a-15c2-4c9f-953c-7d22b2fb5b39
+
+## Backup targets for coda source
 coda:
+  # A set of volume replicas
+  # [default: no sets]
   -
+    # The FQDNs of the servers that host replicas for these volumes
+    # [required]
     servers:
       - coda1.example.org
       - coda2.example.org
+    # The list of volumes
+    # [required]
     volumes:
       - a:foo
       - a:bar
       - a:baz
-  -
-    servers:
-      - coda3.example.org
-      - coda4.example.org
-    volumes:
-      - b:xyzzy
-      - b:plugh
+
+## Backup targets for rbd source
+rbd:
+  # An RBD pool
+  # [default: no pools]
+  pool-1:
+    # Images to back up
+    # [default: no images]
+    images:
+      # A human-readable name for the image, and its RBD name
+      foo-data: volume-be220107-966d-4253-93c7-d33cdfe18166
+    # Snapshots to back up
+    # [default: no snapshots]
+    snapshots:
+      # A human-readable name for the snapshot, and its RBD name
+      foo-data-20140301: snapshot-d023e06a-15c2-4c9f-953c-7d22b2fb5b39
+
+## Backup targets for rgw source
+rgw:
+  # Buckets to back up
+  # [default: no buckets]
+  - bucket1
+
+## Backup targets for rsync source
+rsync:
+  # FQDN of host
+  # [default: no hosts]
+  host1.example.org:
+    # Filesystem mountpoints to back up
+    # [required]
+    mounts: [/, /boot]
+    # Command to run on remote system before backup
+    # [default: no command]
+    pre: /usr/local/bin/database_snapshot --create
+    # Command to run on remote system after backup
+    # (whether or not the backup was successful)
+    # [default: no command]
+    post: /usr/local/bin/database_snapshot --delete
+    # A list of rsync exclude patterns to be applied, in addition to the
+    # global list of exclude patterns
+    # [default: no patterns]
+    exclude:
+      - /var/lib/mysql/*
