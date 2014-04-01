@@ -6,6 +6,10 @@ settings:
   # The logical volume path (vg/lv) corresponding to the backup root
   # [required]
   backup-lv: backups/current
+  # The minimum free percentage of a resource, below which
+  # "multibackup df -c" will complain
+  # [default: 5]
+  df-warning: 10
 
   ## Garbage-collection timing
   # The number of days to retain multiple snapshots per day

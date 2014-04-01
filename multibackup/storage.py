@@ -1,6 +1,8 @@
 from __future__ import division
 from datetime import date, datetime, timedelta
+import os
 import subprocess
+import sys
 
 from .command import subparsers
 
@@ -123,6 +125,61 @@ def select_snapshots_to_remove(settings, snapshots):
     return remove
 
 
+class StorageStatus(object):
+    def __init__(self, vg, lv, mountpoint):
+        # Get filesystem stats
+        st = os.statvfs(mountpoint)
+        self.fs_free_gb = st.f_frsize * st.f_bavail / (1 << 30)
+        self.fs_free_pct = 100 * st.f_bavail / st.f_blocks
+        self.ino_free = st.f_favail
+        self.ino_free_pct = 100 * st.f_favail / st.f_files
+
+        # Find pool LV
+        proc = subprocess.Popen(['sudo', 'lvs', '--noheadings',
+                '-o', 'pool_lv', '%s/%s' % (vg, lv)], stdout=subprocess.PIPE)
+        out, _ = proc.communicate()
+        if proc.returncode:
+            raise IOError("Couldn't retrieve pool LV: lvs returned %d" %
+                    proc.returncode)
+        pool_lv = out.strip()
+        if not pool_lv:
+            raise IOError("Couldn't retrieve pool LV")
+
+        # Get pool LV stats
+        proc = subprocess.Popen(['sudo', 'lvs', '--noheadings', '--nosuffix',
+                '--units', 'g',
+                '-o', 'lv_size,data_percent,lv_metadata_size,metadata_percent',
+                '%s/%s' % (vg, pool_lv)], stdout=subprocess.PIPE)
+        out, _ = proc.communicate()
+        if proc.returncode:
+            raise IOError("Couldn't examine pool LV: lvs returned %d" %
+                    proc.returncode)
+        vals = [float(v) for v in out.split()]
+        data_size, data_pct, meta_size, meta_pct = vals
+        self.lv_free_data_gb = data_size * (100 - data_pct) / 100
+        self.lv_free_data_pct = 100 - data_pct
+        self.lv_free_metadata_gb = meta_size * (100 - meta_pct) / 100
+        self.lv_free_metadata_pct = 100 - meta_pct
+
+    def report(self, pct_threshold=100):
+        data = (
+            ('Free filesystem space', 'GB', self.fs_free_gb,
+                    self.fs_free_pct),
+            ('Free inodes', '', self.ino_free, self.ino_free_pct),
+            ('Free LVM data space', 'GB', self.lv_free_data_gb,
+                    self.lv_free_data_pct),
+            ('Free LVM metadata space', 'GB', self.lv_free_metadata_gb,
+                    self.lv_free_metadata_pct),
+        )
+        printed = False
+        for label, units, value, pct in data:
+            if pct < pct_threshold:
+                print '%-25s %11d %2s (%4.1f%%)' % (label + ':', value,
+                        units, pct)
+                printed = True
+        return printed
+
+
 def cmd_prune(config, args):
     settings = config['settings']
     snapshots = Snapshot.list()
@@ -134,6 +191,19 @@ def cmd_prune(config, args):
             cur.remove(verbose=args.verbose)
 
 
+def cmd_df(config, args):
+    settings = config['settings']
+    vg, lv = settings['backup-lv'].split('/')
+    status = StorageStatus(vg, lv, settings['root'])
+    if args.check:
+        threshold = settings.get('df-warning', 5)
+    else:
+        threshold = 100
+    printed = status.report(threshold)
+    if args.check and printed:
+        sys.exit(1)
+
+
 def _setup():
     parser = subparsers.add_parser('prune',
             help='delete old LVM snapshots')
@@ -142,5 +212,11 @@ def _setup():
             help='just print the snapshots that would be removed')
     parser.add_argument('-v', '--verbose', action='store_true',
             help='report actions taken')
+
+    parser = subparsers.add_parser('df',
+            help='report available disk space')
+    parser.set_defaults(func=cmd_df)
+    parser.add_argument('-c', '--check', action='store_true',
+            help='only report problems')
 
 _setup()

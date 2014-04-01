@@ -6,7 +6,8 @@ from .command import subparsers
 
 TEMPLATES = {
     'crontab': '''
-30 21 * * * %(prog)s prune
+0 21 * * * %(prog)s prune
+55 21 * * * %(prog)s df -c
 0 22 * * * %(prog)s run
 ''',
 
