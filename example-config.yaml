@@ -118,7 +118,9 @@ rsync:
   host1.example.org:
     # Filesystem mountpoints to back up
     # [required]
-    mounts: [/, /boot]
+    mounts:
+      - /
+      - /boot
     # Command to run on remote system before backup
     # [default: no command]
     pre: /usr/local/bin/database_snapshot --create
