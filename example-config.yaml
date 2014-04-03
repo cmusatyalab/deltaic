@@ -36,6 +36,10 @@ settings:
   # [default: 1]
   coda-workers: 2
 
+  ## github source
+  # OAuth token obtained from "multibackup github auth"
+  github-token: my_token
+
   ## rbd source
   # Number of simultaneous backup jobs
   # [default: 1]

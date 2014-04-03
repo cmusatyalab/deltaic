@@ -1,1 +1,1 @@
-from . import coda, rbd, rgw, rsync
+from . import coda, github, rbd, rgw, rsync
