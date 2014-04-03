@@ -22,3 +22,14 @@ class BloomSet(object):
         if isinstance(name, unicode):
             name = name.encode('utf-8')
         return self._bloom_salt + name
+
+
+def update_file(path, data):
+    # Avoid unnecessary LVM COW by only updating the file if its data has
+    # changed
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0666)
+    with os.fdopen(fd, 'r+b') as fh:
+        if fh.read() != data:
+            fh.seek(0)
+            fh.write(data)
+            fh.truncate()

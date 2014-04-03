@@ -12,7 +12,7 @@ import xml.etree.cElementTree as ET
 
 from ..command import make_subcommand_group
 from ..source import Task, Source
-from ..util import BloomSet
+from ..util import BloomSet, update_file
 
 KEY_METADATA_ATTRS = {
     'cache_control': 'Cache-Control',
@@ -98,17 +98,6 @@ def path_to_key_name(root_dir, path):
     component, _ = split_type_code(components_in[-1])
     components_out.append(component)
     return '/'.join(components_out).decode('utf-8')
-
-
-def update_file(path, data):
-    # Avoid unnecessary LVM COW by only updating the file if its data has
-    # changed
-    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0666)
-    with os.fdopen(fd, 'r+b') as fh:
-        if fh.read() != data:
-            fh.seek(0)
-            fh.write(data)
-            fh.truncate()
 
 
 def enumerate_keys(bucket):
