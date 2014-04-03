@@ -13,19 +13,9 @@ def remote_command(host, command):
     subprocess.check_call(args)
 
 
-def sync_host(host, root_dir, mounts, exclude=(), rsync=None):
-    if rsync is None:
-        rsync = 'rsync'
-    args = [rsync, '-aHAXRxi', '--fake-super', '--delete',
-            '--delete-excluded', '--numeric-ids', '--stats', '--partial',
-            '--rsh=ssh -o BatchMode=yes -o StrictHostKeyChecking=no']
-    args.extend(['--exclude=' + r for r in exclude])
-    args.extend(['root@%s:%s' % (host, mount.rstrip('/') or '/')
-            for mount in mounts])
-    args.append(root_dir.rstrip('/'))
-
-    print ' '.join(args)
-    proc = subprocess.Popen(args, stdout=subprocess.PIPE)
+def run_rsync(cmd):
+    print ' '.join(cmd)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
     # Filter out spurious log output from
     # https://bugzilla.samba.org/show_bug.cgi?id=10496
@@ -34,8 +24,30 @@ def sync_host(host, root_dir, mounts, exclude=(), rsync=None):
         if not spurious.match(line):
             print line.strip()
 
-    if proc.wait() not in (0, 24):
-        raise Exception('rsync failed with code %d' % proc.returncode)
+    return proc.wait()
+
+
+def sync_host(host, root_dir, mounts, exclude=(), rsync=None):
+    if rsync is None:
+        rsync = 'rsync'
+    args = [rsync, '-aHRxi', '--acls', '--xattrs', '--fake-super', '--delete',
+            '--delete-excluded', '--numeric-ids', '--stats', '--partial',
+            '--rsh=ssh -o BatchMode=yes -o StrictHostKeyChecking=no']
+    args.extend(['--exclude=' + r for r in exclude])
+    args.extend(['root@%s:%s' % (host, mount.rstrip('/') or '/')
+            for mount in mounts])
+    args.append(root_dir.rstrip('/'))
+
+    ret = run_rsync(args)
+    if ret == 2:
+        # Feature not supported by negotiated protocol version;
+        # start dropping newer features
+        args.remove('--acls')
+        args.remove('--xattrs')
+        ret = run_rsync(args)
+
+    if ret not in (0, 24):
+        raise IOError('rsync failed with code %d' % ret)
 
 
 def cmd_rsync_backup(config, args):
