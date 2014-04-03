@@ -1,13 +1,12 @@
 import Queue
 import subprocess
-import sys
 from threading import Thread
 
+from .command import get_cmdline_for_subcommand
+
 class Task(object):
-    def run(self, global_args=None):
-        command = [sys.executable, sys.argv[0]]
-        command.extend(global_args or [])
-        command.extend(self.args)
+    def run(self):
+        command = get_cmdline_for_subcommand(self.args)
         print ' '.join(command)
         subprocess.check_call(command, close_fds=True)
 
@@ -28,19 +27,19 @@ class Source(object):
                 sources[subclass.LABEL] = subclass
         return sources
 
-    def start(self, global_args=None):
+    def start(self):
         for n in range(self._thread_count):
-            thread = Thread(target=self._worker, args=(global_args,))
+            thread = Thread(target=self._worker)
             thread.start()
             self._threads.append(thread)
 
-    def _worker(self, global_args):
+    def _worker(self):
         while True:
             try:
                 task = self._queue.get_nowait()
             except Queue.Empty:
                 return
-            task.run(global_args)
+            task.run()
 
     def wait(self):
         for thread in self._threads:

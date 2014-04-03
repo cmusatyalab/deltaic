@@ -3,17 +3,17 @@ import fcntl
 import os
 import sys
 
-from .command import parser, subparsers
+from .command import subparsers
 from .source import Source
 from .storage import Snapshot
 from . import sources as _  # Load all sources
 
-def run_tasks(config, source_names, global_args=None):
+def run_tasks(config, source_names):
     source_map = Source.get_sources()
     sources = []
     for name in source_names:
         source = source_map[name](config)
-        source.start(global_args)
+        source.start()
         sources.append(source)
     for source in sources:
         source.wait()
@@ -21,10 +21,6 @@ def run_tasks(config, source_names, global_args=None):
 
 def cmd_run(config, args):
     settings = config['settings']
-    global_args = []
-    if args.config_file != parser.get_default('config_file'):
-        global_args.extend(['-c', args.config_file])
-
     lockfile = os.path.join(settings['root'], '.lock')
     with open(lockfile, 'w') as lock:
         try:
@@ -36,7 +32,7 @@ def cmd_run(config, args):
             else:
                 raise
 
-        run_tasks(config, args.sources, global_args)
+        run_tasks(config, args.sources)
         if args.snapshot:
             vg, lv = settings['backup-lv'].split('/')
             Snapshot.create(vg, lv, verbose=True)
