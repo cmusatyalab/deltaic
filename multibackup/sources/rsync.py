@@ -39,9 +39,12 @@ def sync_host(host, root_dir, mounts, exclude=(), rsync=None):
     args.append(root_dir.rstrip('/'))
 
     ret = run_rsync(args)
+    if ret in (2, 10):
+        # Try falling back to protocol 30 to work around failures when one
+        # rsync is 3.1.0 and the other is >= 3.1.1
+        ret = run_rsync(args + ['--protocol=30'])
     if ret == 2:
-        # Feature not supported by negotiated protocol version;
-        # start dropping newer features
+        # Drop features that require protocol >= 30
         args.remove('--acls')
         args.remove('--xattrs')
         ret = run_rsync(args)
