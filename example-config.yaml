@@ -38,7 +38,14 @@ settings:
 
   ## github source
   # OAuth token obtained from "multibackup github auth"
+  # [required]
   github-token: my_token
+  # The path to git on the local server
+  # [default: git]
+  github-git-path: /usr/local/bin/git
+  # Number of simultaneous backup jobs
+  # [default: 1]
+  github-workers: 2
 
   ## rbd source
   # Number of simultaneous backup jobs
@@ -92,6 +99,12 @@ coda:
       - a:foo
       - a:bar
       - a:baz
+
+## Backup targets for github source
+github:
+  # A GitHub organization
+  # [default: no organizations]
+  - jquery
 
 ## Backup targets for rbd source
 rbd:

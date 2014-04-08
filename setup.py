@@ -7,6 +7,7 @@ setup(
         'multibackup.sources',
     ],
     scripts=[
+        'bin/mb-askpass',
         'bin/multibackup',
     ],
     description='Simple multi-source backup system using LVM snapshots',

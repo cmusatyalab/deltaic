@@ -1,0 +1,21 @@
+#!/usr/bin/env python
+
+import argparse
+import os
+
+def askpass(prompt):
+    if 'Username' in prompt:
+        print os.environ['MB_ASKPASS_USER']
+    elif 'Password' in prompt:
+        print os.environ['MB_ASKPASS_PASS']
+    else:
+        raise ValueError('Unrecognized prompt: %s' % prompt)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('prompt',
+            help='askpass prompt string')
+    args = parser.parse_args()
+
+    askpass(args.prompt)
