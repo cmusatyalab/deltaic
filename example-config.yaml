@@ -138,6 +138,9 @@ rsync:
     mounts:
       - /
       - /boot
+    # The subdirectory to store backups into
+    # [default: hostname up to the first dot]
+    alias: octopus
     # Command to run on remote system before backup
     # [default: no command]
     pre: /usr/local/bin/database_snapshot --create

@@ -56,7 +56,8 @@ def sync_host(host, root_dir, mounts, exclude=(), rsync=None):
 def cmd_rsync_backup(config, args):
     settings = config['settings']
     info = config['rsync'][args.host]
-    root_dir = os.path.join(settings['root'], 'rsync', args.host.split('.')[0])
+    alias = info.get('alias', args.host.split('.')[0])
+    root_dir = os.path.join(settings['root'], 'rsync', alias)
     exclude = settings.get('rsync-exclude', [])
     exclude.extend(info.get('exclude', []))
     rsync = settings.get('rsync-local-binary')
