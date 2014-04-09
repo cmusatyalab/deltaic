@@ -13,7 +13,7 @@ TEMPLATES = {
 
     'sudoers': '''
 # Allow backup script to query and create snapshot volumes
-%(user)s ALL=NOPASSWD: /sbin/lvs, /sbin/lvcreate, /sbin/lvremove
+%(user)s ALL=NOPASSWD: /sbin/lvs, /sbin/lvcreate, /sbin/lvremove, /sbin/lvchange, /bin/mount, /bin/umount
 ''',
 }
 

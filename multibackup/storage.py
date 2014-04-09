@@ -21,7 +21,7 @@ class Snapshot(object):
         self.month = ((self.week - 1) // 4) + 1
 
     def __str__(self):
-        return '%s/%s' % (self.vg, self.name)
+        return '%s' % self.name
 
     def __repr__(self):
         return 'Snapshot(%s, %s)' % (repr(self.vg), repr(self.name))
@@ -204,6 +204,38 @@ def cmd_df(config, args):
         sys.exit(1)
 
 
+def cmd_ls(config, args):
+    for snapshot in sorted(Snapshot.list()):
+        print snapshot
+
+
+def cmd_mount(config, args):
+    settings = config['settings']
+    vg, _ = settings['backup-lv'].split('/')
+    if '/' in args.snapshot:
+        raise ValueError('Invalid snapshot: %s' % args.snapshot)
+    mountpoint = os.path.join(settings['root'], 'Snapshots', args.snapshot)
+    subprocess.check_call(['sudo', 'lvchange', '-a', 'y', '-K',
+            '%s/%s' % (vg, args.snapshot)])
+    if not os.path.exists(mountpoint):
+        os.makedirs(mountpoint)
+    subprocess.check_call(['sudo', 'mount', '-o', 'ro',
+            '/dev/%s/%s' % (vg, args.snapshot), mountpoint])
+    print mountpoint
+
+
+def cmd_umount(config, args):
+    settings = config['settings']
+    vg, _ = settings['backup-lv'].split('/')
+    if '/' in args.snapshot:
+        raise ValueError('Invalid snapshot: %s' % args.snapshot)
+    mountpoint = os.path.join(settings['root'], 'Snapshots', args.snapshot)
+    subprocess.check_call(['sudo', 'umount', mountpoint])
+    os.rmdir(mountpoint)
+    subprocess.check_call(['sudo', 'lvchange', '-a', 'n',
+            '%s/%s' % (vg, args.snapshot)])
+
+
 def _setup():
     parser = subparsers.add_parser('prune',
             help='delete old LVM snapshots')
@@ -218,5 +250,21 @@ def _setup():
     parser.set_defaults(func=cmd_df)
     parser.add_argument('-c', '--check', action='store_true',
             help='only report problems')
+
+    parser = subparsers.add_parser('ls',
+            help='list snapshots')
+    parser.set_defaults(func=cmd_ls)
+
+    parser = subparsers.add_parser('mount',
+            help='mount a snapshot')
+    parser.set_defaults(func=cmd_mount)
+    parser.add_argument('snapshot',
+            help='snapshot name')
+
+    parser = subparsers.add_parser('umount',
+            help='unmount a snapshot')
+    parser.set_defaults(func=cmd_umount)
+    parser.add_argument('snapshot',
+            help='snapshot name')
 
 _setup()
