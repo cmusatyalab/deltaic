@@ -33,3 +33,5 @@ def update_file(path, data):
             fh.seek(0)
             fh.write(data)
             fh.truncate()
+            return True
+    return False

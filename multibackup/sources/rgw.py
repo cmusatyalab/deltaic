@@ -171,13 +171,16 @@ def sync_key(args):
                 if value:
                     metadata[name] = value
             update_file(out_meta, json.dumps(metadata, sort_keys=True))
-        update_file(out_acl, key.get_xml_acl())
+        updated_acl = update_file(out_acl, key.get_xml_acl())
         if need_update:
             os.utime(out_data, (key_time, key_time))
             os.utime(out_meta, (key_time, key_time))
             # Don't utimes out_acl, since the Last-Modified time doesn't
             # apply to it
-        return (key_name, None)
+        if need_update or updated_acl:
+            return (key_name, None)
+        else:
+            return (None, None)
     except Exception, e:
         for path in out_data, out_meta, out_acl:
             try:
