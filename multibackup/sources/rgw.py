@@ -12,7 +12,7 @@ import xml.etree.cElementTree as ET
 
 from ..command import make_subcommand_group
 from ..source import Task, Source
-from ..util import BloomSet, update_file
+from ..util import BloomSet, update_file, write_atomic
 
 KEY_METADATA_ATTRS = {
     'cache_control': 'Cache-Control',
@@ -161,7 +161,7 @@ def sync_key(args):
     key = download_bucket.new_key(key_name)
     try:
         if need_update:
-            with open(out_data, 'wb') as fh:
+            with write_atomic(out_data, suffix='_t') as fh:
                 key.get_contents_to_file(fh)
             metadata = {
                 'metadata': key.metadata,
@@ -170,8 +170,9 @@ def sync_key(args):
                 value = getattr(key, attr, None)
                 if value:
                     metadata[name] = value
-            update_file(out_meta, json.dumps(metadata, sort_keys=True))
-        updated_acl = update_file(out_acl, key.get_xml_acl())
+            update_file(out_meta, json.dumps(metadata, sort_keys=True),
+                    suffix='_t')
+        updated_acl = update_file(out_acl, key.get_xml_acl(), suffix='_t')
         if need_update:
             os.utime(out_data, (key_time, key_time))
             os.utime(out_meta, (key_time, key_time))
@@ -235,6 +236,9 @@ def sync_bucket(server, bucket_name, root_dir, workers, force_acls, secure):
                 if code == 'A':
                     # Bucket ACL
                     delete = False
+                elif code == 't':
+                    # Leftover temporary file
+                    delete = True
                 else:
                     key_name = path_to_key_name(root_dir, filepath)
                     delete = key_name not in key_set

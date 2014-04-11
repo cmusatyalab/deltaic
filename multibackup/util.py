@@ -1,5 +1,9 @@
+from contextlib import contextmanager
 import os
 from pybloom import ScalableBloomFilter
+from tempfile import mkstemp
+
+TEMPFILE_PREFIX = '.backup-tmp'
 
 class BloomSet(object):
     def __init__(self, initial_capacity=1000, error_rate=0.0001):
@@ -24,14 +28,38 @@ class BloomSet(object):
         return self._bloom_salt + name
 
 
-def update_file(path, data):
+@contextmanager
+def write_atomic(path, prefix=TEMPFILE_PREFIX, suffix=''):
+    # Open a temporary file for writing.  On successfully exiting the
+    # context, close the file and rename it to the specified path.
+    # On exiting due to exception, close and delete the temporary file.
+    #
+    # Any source using this function must eventually garbage-collect
+    # temporary files, and must ignore them during restores.
+    fd, tempfile = mkstemp(prefix=prefix, suffix=suffix,
+            dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, 'wb') as fh:
+            yield fh
+        os.chmod(tempfile, 0644)
+        os.rename(tempfile, path)
+    except:
+        os.unlink(tempfile)
+        raise
+
+
+def update_file(path, data, prefix=TEMPFILE_PREFIX, suffix=''):
     # Avoid unnecessary LVM COW by only updating the file if its data has
-    # changed
-    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0666)
-    with os.fdopen(fd, 'r+b') as fh:
-        if fh.read() != data:
-            fh.seek(0)
-            fh.write(data)
-            fh.truncate()
-            return True
-    return False
+    # changed.
+    #
+    # Any source using this function must eventually garbage-collect
+    # temporary files, and must ignore them during restores.
+    try:
+        with open(path, 'rb') as fh:
+            if fh.read() == data:
+                return False
+    except IOError:
+        pass
+    with write_atomic(path, prefix=prefix, suffix=suffix) as fh:
+        fh.write(data)
+    return True

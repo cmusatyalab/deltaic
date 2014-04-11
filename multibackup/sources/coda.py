@@ -10,7 +10,7 @@ import xattr
 from ..command import make_subcommand_group
 from ..platform import lutime
 from ..source import Task, Source
-from ..util import BloomSet
+from ..util import BloomSet, write_atomic
 
 ATTR_INCREMENTAL = 'user.coda.incremental-ok'
 ATTR_STAT = 'user.rsync.%stat'
@@ -131,13 +131,12 @@ def update_dir_from_tar(tar, root_dir):
             if (not st or entry.size != st.st_size or
                     entry.mtime != st.st_mtime):
                 print 'f', path
-                if st is not None:
-                    # Break hard links in case links were also broken at the
-                    # source.  codadump2tar always dumps hard links, so we
-                    # will rebuild any links that should still exist.
-                    os.unlink(path)
                 ifh = tar.extractfile(entry)
-                with open(path, 'w+b') as ofh:
+                # write_atomic() will break hard links, which is what we
+                # want because links may have also been broken at the source.
+                # codadump2tar always dumps hard links, so we will rebuild
+                # any links that should still exist.
+                with write_atomic(path) as ofh:
                     while True:
                         buf = ifh.read(BLOCKSIZE)
                         if not buf:
