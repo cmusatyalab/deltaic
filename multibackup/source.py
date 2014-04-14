@@ -23,7 +23,7 @@ class Task(object):
         log_base = os.path.join(log_dir, date.today().strftime(self.DATE_FMT))
         timestamp = lambda: datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        print 'Starting %s' % self
+        sys.stdout.write('Starting %s\n' % self)
         command = get_cmdline_for_subcommand(self.args)
         with open('/dev/null', 'r+') as null:
             with open(log_base + '.err', 'a') as err:
@@ -41,8 +41,8 @@ class Task(object):
                             fh.write('# Task exited with status %d\n' % ret)
                         fh.write('# Ending task at %s\n\n' % timestamp())
         if ret:
-            print >>sys.stderr, '%s failed' % self
-        print 'Ending %s' % self
+            sys.stderr.write('%s failed\n' % self)
+        sys.stdout.write('Ending %s\n' % self)
 
 
 class Source(object):
