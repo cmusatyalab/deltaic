@@ -319,14 +319,16 @@ _setup()
 
 
 class ImageTask(Task):
-    def __init__(self, pool, friendly_name):
-        Task.__init__(self)
+    def __init__(self, settings, pool, friendly_name):
+        Task.__init__(self, settings)
+        self.root = get_relroot(pool, friendly_name)
         self.args = ['rbd', 'backup', pool, friendly_name]
 
 
 class SnapshotTask(ImageTask):
-    def __init__(self, pool, friendly_name):
-        ImageTask.__init__(self, pool, friendly_name)
+    def __init__(self, settings, pool, friendly_name):
+        ImageTask.__init__(self, settings, pool, friendly_name)
+        self.root = get_relroot(pool, friendly_name, snapshot=True)
         self.args.append('-s')
 
 
@@ -337,6 +339,8 @@ class RBDSource(Source):
         Source.__init__(self, config)
         for pool, info in self._manifest.items():
             for friendly_name in info.get('images', {}):
-                self._queue.put(ImageTask(pool, friendly_name))
+                self._queue.put(ImageTask(self._settings, pool,
+                        friendly_name))
             for friendly_name in info.get('snapshots', {}):
-                self._queue.put(SnapshotTask(pool, friendly_name))
+                self._queue.put(SnapshotTask(self._settings, pool,
+                        friendly_name))

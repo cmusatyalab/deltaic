@@ -5,10 +5,17 @@ from threading import Thread
 from .command import get_cmdline_for_subcommand
 
 class Task(object):
+    def __init__(self, settings):
+        self._settings = settings
+
+    def __str__(self):
+        return self.root
+
     def run(self):
-        command = get_cmdline_for_subcommand(self.args)
-        print ' '.join(command)
-        subprocess.check_call(command, close_fds=True)
+        print 'Starting %s' % self
+        subprocess.check_call(get_cmdline_for_subcommand(self.args),
+                close_fds=True)
+        print 'Ending %s' % self
 
 
 class Source(object):

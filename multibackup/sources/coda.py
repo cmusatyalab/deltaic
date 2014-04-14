@@ -302,7 +302,8 @@ _setup()
 
 class CodaTask(Task):
     def __init__(self, settings, server, volume):
-        Task.__init__(self)
+        Task.__init__(self, settings)
+        self.root = get_relroot(server, volume)
         self.args = ['coda', 'backup', server, volume]
         if random.random() >= settings.get('coda-full-probability', 0.143):
             self.args.append('-i')

@@ -180,8 +180,9 @@ _setup()
 
 
 class GitHubTask(Task):
-    def __init__(self, org, repo=None):
-        Task.__init__(self)
+    def __init__(self, settings, org, repo=None):
+        Task.__init__(self, settings)
+        self.root = get_relroot(org, repo)
         self.args = ['github', 'backup', org]
         if repo:
             self.args.append(repo)
@@ -201,7 +202,7 @@ class GitHubSource(Source):
                 raise IOError("Couldn't list GitHub repos for %s" % org)
             repos = [r for r in out.split('\n') if r]
             # Update org metadata
-            self._queue.put(GitHubTask(org))
+            self._queue.put(GitHubTask(self._settings, org))
             # Update repos
             for repo in repos:
-                self._queue.put(GitHubTask(org, repo))
+                self._queue.put(GitHubTask(self._settings, org, repo))

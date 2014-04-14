@@ -386,7 +386,8 @@ _setup()
 
 class BucketTask(Task):
     def __init__(self, settings, name):
-        Task.__init__(self)
+        Task.__init__(self, settings)
+        self.root = get_relroot(name)
         self.args = ['rgw', 'backup', name]
         force_acl_prob = settings.get('rgw-force-acl-probability', 0.0166)
         if random.random() < force_acl_prob:

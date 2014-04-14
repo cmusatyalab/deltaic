@@ -87,8 +87,9 @@ _setup()
 
 
 class RsyncTask(Task):
-    def __init__(self, hostname):
-        Task.__init__(self)
+    def __init__(self, settings, hostname, info):
+        Task.__init__(self, settings)
+        self.root = get_relroot(hostname, info)
         self.args = ['rsync', 'backup', hostname]
 
 
@@ -97,5 +98,5 @@ class RsyncSource(Source):
 
     def __init__(self, config):
         Source.__init__(self, config)
-        for hostname in sorted(self._manifest):
-            self._queue.put(RsyncTask(hostname))
+        for hostname, info in sorted(self._manifest.items()):
+            self._queue.put(RsyncTask(self._settings, hostname, info))
