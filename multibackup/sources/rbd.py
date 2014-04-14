@@ -337,10 +337,10 @@ class RBDSource(Source):
 
     def __init__(self, config):
         Source.__init__(self, config)
-        for pool, info in self._manifest.items():
-            for friendly_name in info.get('images', {}):
+        for pool, info in sorted(self._manifest.items()):
+            for friendly_name in sorted(info.get('images', {})):
                 self._queue.put(ImageTask(self._settings, pool,
                         friendly_name))
-            for friendly_name in info.get('snapshots', {}):
+            for friendly_name in sorted(info.get('snapshots', {})):
                 self._queue.put(SnapshotTask(self._settings, pool,
                         friendly_name))
