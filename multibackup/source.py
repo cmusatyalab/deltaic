@@ -41,8 +41,8 @@ class Task(object):
                             fh.write('# Task exited with status %d\n' % ret)
                         fh.write('# Ending task at %s\n\n' % timestamp())
         if ret:
-            sys.stderr.write('%s failed\n' % self)
-        sys.stdout.write('Ending %s\n' % self)
+            sys.stderr.write('Failed:  %s\n' % self)
+        sys.stdout.write('Ending   %s\n' % self)
 
 
 class Source(object):
