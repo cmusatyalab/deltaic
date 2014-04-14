@@ -260,10 +260,14 @@ def sync_backup_volume(host, volume, root_dir, incremental=False,
     update_xattr(root_xattrs, ATTR_INCREMENTAL, '')
 
 
+def get_relroot(hostname, volume):
+    return os.path.join('coda', hostname.split('.')[0], volume)
+
+
 def cmd_coda_backup(config, args):
     settings = config['settings']
-    root_dir = os.path.join(settings['root'], 'coda', args.host.split('.')[0],
-            args.volume)
+    root_dir = os.path.join(settings['root'],
+            get_relroot(args.host, args.volume))
     volutil = settings.get('coda-volutil-path', 'volutil')
     codadump2tar = settings.get('coda-codadump2tar-path', 'codadump2tar')
     if args.refresh:

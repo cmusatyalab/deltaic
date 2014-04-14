@@ -53,11 +53,15 @@ def sync_host(host, root_dir, mounts, exclude=(), rsync=None):
         raise IOError('rsync failed with code %d' % ret)
 
 
+def get_relroot(hostname, info):
+    alias = info.get('alias', hostname.split('.')[0])
+    return os.path.join('rsync', alias)
+
+
 def cmd_rsync_backup(config, args):
     settings = config['settings']
     info = config['rsync'][args.host]
-    alias = info.get('alias', args.host.split('.')[0])
-    root_dir = os.path.join(settings['root'], 'rsync', alias)
+    root_dir = os.path.join(settings['root'], get_relroot(args.host, info))
     exclude = settings.get('rsync-exclude', [])
     exclude.extend(info.get('exclude', []))
     rsync = settings.get('rsync-local-binary')

@@ -121,18 +121,27 @@ def cmd_github_auth(config, args):
     print '\n' + yaml.safe_dump(structured, default_flow_style=False).strip()
 
 
+def get_relroot(organization, repo=None):
+    components = ['github', organization]
+    if repo:
+        components.append(repo)
+    return os.path.join(*components)
+
+
 def cmd_github_backup(config, args):
     settings = config['settings']
     token = settings['github-token']
-    org_dir = os.path.join(settings['root'], 'github', args.organization)
     gh = github_login(token=token)
 
     if args.repo is not None:
+        root_dir = os.path.join(settings['root'],
+                get_relroot(args.organization, args.repo))
         sync_repo(gh.repository(args.organization, args.repo),
-                os.path.join(org_dir, args.repo), token,
-                git_path=settings.get('github-git-path'))
+                root_dir, token, git_path=settings.get('github-git-path'))
     else:
-        sync_org(gh.organization(args.organization), org_dir)
+        root_dir = os.path.join(settings['root'],
+                get_relroot(args.organization))
+        sync_org(gh.organization(args.organization), root_dir)
 
     print gh.ratelimit_remaining, 'requests left in quota'
 

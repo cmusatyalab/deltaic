@@ -262,12 +262,17 @@ def drop_image_snapshots(pool, path):
     try_unlink(path + PENDING_EXT)
 
 
+def get_relroot(pool, friendly_name, snapshot=False):
+    return os.path.join('rbd', pool, 'snapshots' if snapshot else 'images',
+            friendly_name)
+
+
 def cmd_rbd_backup(config, args):
     settings = config['settings']
-    object_group = 'snapshots' if args.snapshot else 'images'
-    object_name = config['rbd'][args.pool][object_group][args.friendly_name]
-    out_path = os.path.join(settings['root'], 'rbd', args.pool, object_group,
-            args.friendly_name)
+    object_name = config['rbd'][args.pool]['snapshots' if args.snapshot
+            else 'images'][args.friendly_name]
+    out_path = os.path.join(settings['root'],
+            get_relroot(args.pool, args.friendly_name, snapshot=args.snapshot))
     basedir = os.path.dirname(out_path)
     if not os.path.exists(basedir):
         try:
@@ -283,8 +288,8 @@ def cmd_rbd_backup(config, args):
 
 def cmd_rbd_drop(config, args):
     settings = config['settings']
-    out_path = os.path.join(settings['root'], 'rbd', args.pool, 'images',
-            args.friendly_name)
+    out_path = os.path.join(settings['root'],
+            get_relroot(args.pool, args.friendly_name))
     drop_image_snapshots(args.pool, out_path)
 
 

@@ -332,9 +332,13 @@ def restore_bucket(root_dir, server, dest_bucket_name, force, secure, workers):
     pool.join()
 
 
+def get_relroot(bucket):
+    return os.path.join('rgw', bucket)
+
+
 def cmd_rgw_backup(config, args):
     settings = config['settings']
-    root_dir = os.path.join(settings['root'], 'rgw', args.bucket)
+    root_dir = os.path.join(settings['root'], get_relroot(args.bucket))
     server = settings['rgw-server']
     secure = settings.get('rgw-secure', False)
     workers = settings.get('rgw-threads', 4)
@@ -347,7 +351,7 @@ def cmd_rgw_restore(config, args):
     if '/' in args.source:
         root_dir = os.path.abspath(args.source)
     else:
-        root_dir = os.path.join(settings['root'], 'rgw', args.source)
+        root_dir = os.path.join(settings['root'], get_relroot(args.source))
     server = settings['rgw-server']
     secure = settings.get('rgw-secure', False)
     workers = settings.get('rgw-threads', 4)
