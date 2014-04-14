@@ -16,7 +16,7 @@ def make_subcommand_group(name, help):
 
 
 def get_cmdline_for_subcommand(subcommand):
-    cmd = [sys.executable, sys.argv[0]]
+    cmd = [sys.executable, '-u', sys.argv[0]]
     # Append global command-line arguments that must be passed to all
     # sub-invocations.  Reparse the command line so the entire call chain
     # doesn't have to pass the Namespace around.
