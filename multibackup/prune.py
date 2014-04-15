@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+import os
 
 from .command import subparsers
 from .storage import Snapshot
@@ -50,8 +51,25 @@ def select_snapshots_to_remove(settings, snapshots):
     return remove
 
 
+def prune_logs(root_dir, distinct_days):
+    def handle_error(err):
+        raise err
+    for dirpath, _, filenames in os.walk(root_dir, onerror=handle_error):
+        days = set()
+        for filename in sorted(filenames, reverse=True):
+            day, _ = os.path.splitext(filename)
+            if day in days:
+                continue
+            elif len(days) < distinct_days:
+                days.add(day)
+                continue
+            else:
+                os.unlink(os.path.join(dirpath, filename))
+
+
 def cmd_prune(config, args):
     settings = config['settings']
+
     snapshots = Snapshot.list()
     remove = select_snapshots_to_remove(settings, snapshots)
     for cur in sorted(remove):
@@ -60,14 +78,19 @@ def cmd_prune(config, args):
         else:
             cur.remove(verbose=args.verbose)
 
+    if not args.dry_run:
+        log_dir = os.path.join(settings['root'], 'Logs')
+        distinct_days = settings.get('gc-log-distinct-days', 60)
+        prune_logs(log_dir, distinct_days)
+
 
 def _setup():
     parser = subparsers.add_parser('prune',
-            help='delete old LVM snapshots')
+            help='delete old LVM snapshots and backup logs')
     parser.set_defaults(func=cmd_prune)
     parser.add_argument('-n', '--dry-run', action='store_true',
             help='just print the snapshots that would be removed')
     parser.add_argument('-v', '--verbose', action='store_true',
-            help='report actions taken')
+            help='report snapshots removed')
 
 _setup()

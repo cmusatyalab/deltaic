@@ -21,6 +21,9 @@ settings:
   # The number of ISO 8601 (28-day) months to retain one backup per week
   # [default: 12]
   gc-weekly-months: 12
+  # The number of backup logs to retain per instance
+  # [default: 60]
+  gc-log-distinct-days: 60
 
   ## coda source
   # The probability that a full dump will be perfomed on a Coda volume
