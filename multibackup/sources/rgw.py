@@ -1,5 +1,6 @@
 import boto
 from boto.s3.connection import OrdinaryCallingFormat
+import calendar
 import dateutil.parser
 import json
 from multiprocessing import Pool
@@ -131,7 +132,7 @@ def sync_pool_init(root_dir_, server, bucket_name, access_key, secret_key,
 
 def sync_key(args):
     key_name, key_size, key_date = args
-    key_time = time.mktime(dateutil.parser.parse(key_date).timetuple())
+    key_time = calendar.timegm(dateutil.parser.parse(key_date).utctimetuple())
     out_data = key_name_to_path(root_dir, key_name, 'k')
     out_meta = key_name_to_path(root_dir, key_name, 'm')
     out_acl = key_name_to_path(root_dir, key_name, 'a')
