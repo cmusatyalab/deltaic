@@ -14,8 +14,11 @@ def run_tasks(config):
         source = source_type(config)
         source.start()
         sources.append(source)
+    success = True
     for source in sources:
-        source.wait()
+        if not source.wait():
+            success = False
+    return success
 
 
 def cmd_run(config, args):
@@ -31,10 +34,13 @@ def cmd_run(config, args):
             else:
                 raise
 
-        run_tasks(config)
+        success = run_tasks(config)
         if args.snapshot:
             vg, lv = settings['backup-lv'].split('/')
             Snapshot.create(vg, lv, verbose=True)
+
+    if not success:
+        return 1
 
 
 def _setup():

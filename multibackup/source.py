@@ -44,6 +44,8 @@ class Task(object):
             sys.stderr.write('Failed:  %s\n' % self)
         sys.stdout.write('Ending   %s\n' % self)
 
+        return ret == 0
+
 
 class Source(object):
     def __init__(self, config):
@@ -52,6 +54,7 @@ class Source(object):
         self._queue = Queue.Queue()
         self._thread_count = self._settings.get('%s-workers' % self.LABEL, 1)
         self._threads = []
+        self._success = True
 
     @classmethod
     def get_sources(cls):
@@ -73,9 +76,11 @@ class Source(object):
                 task = self._queue.get_nowait()
             except Queue.Empty:
                 return
-            task.run()
+            if not task.run():
+                self._success = False
 
     def wait(self):
         for thread in self._threads:
             thread.join()
         self._threads = []
+        return self._success
