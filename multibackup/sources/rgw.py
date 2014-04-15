@@ -34,10 +34,6 @@ KEY_UPLOAD_HEADERS = set([
 
 S3_NAMESPACE = 'http://s3.amazonaws.com/doc/2006-03-01/'
 
-def warn(msg, *args):
-    print >>sys.stderr, msg % args
-
-
 def radosgw_admin(*args):
     proc = subprocess.Popen(['radosgw-admin', '--format=json'] +
             list(args), stdout=subprocess.PIPE)
@@ -194,6 +190,11 @@ def sync_key(args):
 
 
 def sync_bucket(server, bucket_name, root_dir, workers, force_acls, secure):
+    warned = set()
+    def warn(msg, *args):
+        print >>sys.stderr, msg % args
+        warned.add(True)
+
     # Connect
     access_key, secret_key = get_bucket_credentials(bucket_name)
     conn = connect(server, access_key, secret_key, secure=secure)
@@ -258,6 +259,9 @@ def sync_bucket(server, bucket_name, root_dir, workers, force_acls, secure):
         except OSError:
             # Directory not empty
             pass
+
+    # Return True on success, False if there were warnings
+    return not warned
 
 
 def upload_pool_init(root_dir_, server, bucket_name, access_key, secret_key,
@@ -342,8 +346,9 @@ def cmd_rgw_backup(config, args):
     server = settings['rgw-server']
     secure = settings.get('rgw-secure', False)
     workers = settings.get('rgw-threads', 4)
-    sync_bucket(server, args.bucket, root_dir, workers=workers,
-            force_acls=args.force_acls, secure=secure)
+    if not sync_bucket(server, args.bucket, root_dir, workers=workers,
+            force_acls=args.force_acls, secure=secure):
+        return 1
 
 
 def cmd_rgw_restore(config, args):
