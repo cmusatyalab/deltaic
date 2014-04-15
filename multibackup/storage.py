@@ -2,7 +2,6 @@ from __future__ import division
 from datetime import date, datetime, timedelta
 import os
 import subprocess
-import sys
 
 from .command import subparsers
 
@@ -201,7 +200,7 @@ def cmd_df(config, args):
         threshold = 100
     printed = status.report(threshold)
     if args.check and printed:
-        sys.exit(1)
+        return 1
 
 
 def cmd_ls(config, args):

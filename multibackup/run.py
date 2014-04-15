@@ -27,7 +27,7 @@ def cmd_run(config, args):
         except IOError, e:
             if e.errno in (errno.EACCES, errno.EAGAIN):
                 print >>sys.stderr, 'Another backup is already running.'
-                sys.exit(1)
+                return 1
             else:
                 raise
 
