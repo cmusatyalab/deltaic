@@ -40,7 +40,7 @@ def radosgw_admin(*args):
             list(args), stdout=subprocess.PIPE)
     out, _ = proc.communicate()
     if proc.returncode:
-        raise Exception('radosgw-admin returned %d' % proc.returncode)
+        raise IOError('radosgw-admin returned %d' % proc.returncode)
     return json.loads(out)
 
 
