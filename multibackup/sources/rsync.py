@@ -98,5 +98,6 @@ class RsyncSource(Source):
 
     def __init__(self, config):
         Source.__init__(self, config)
-        for hostname, info in sorted(self._manifest.items()):
+        for hostname, info in sorted(self._manifest.items(),
+                key=lambda e: e[1].get('alias', e[0])):
             self._queue.put(RsyncTask(self._settings, hostname, info))
