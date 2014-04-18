@@ -6,9 +6,11 @@ from .command import subparsers
 
 TEMPLATES = {
     'crontab': '''
+MAILTO = %(email)s
+
 0 21 * * * %(prog)s prune
 55 21 * * * %(prog)s df -c
-0 22 * * * %(prog)s run
+0 22 * * * %(prog)s run >/dev/null && echo "OK"
 ''',
 
     'sudoers': '''
@@ -22,6 +24,7 @@ def cmd_mkconf(config, args):
     print TEMPLATES[args.file].strip() % {
         'user': getuser(),
         'prog': os.path.abspath(sys.argv[0]),
+        'email': args.email,
     }
 
 
@@ -31,5 +34,7 @@ def _setup():
     parser.set_defaults(func=cmd_mkconf)
     parser.add_argument('file', choices=TEMPLATES,
             help='config file to generate')
+    parser.add_argument('--email', default='root', metavar='ADDRESS',
+            help='email address to send status reports')
 
 _setup()
