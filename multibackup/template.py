@@ -14,8 +14,11 @@ MAILTO = %(email)s
 ''',
 
     'sudoers': '''
-# Allow backup script to query and create snapshot volumes
+# Allow backup script to query, create, delete, mount, and unmount
+# snapshot volumes
 %(user)s ALL=NOPASSWD: /sbin/lvs, /sbin/lvcreate, /sbin/lvremove, /sbin/lvchange, /bin/mount, /bin/umount
+# Allow running sudo from cron
+Defaults:%(user)s !requiretty
 ''',
 }
 
