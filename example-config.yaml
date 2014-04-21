@@ -82,6 +82,10 @@ settings:
   rsync-exclude:
     - /tmp/*
     - /var/tmp/*
+  # The probability that a host's backup will be revalidated by comparing
+  # backup data to the original
+  # [default: 0.0166]
+  rsync-scrub-probability: 0.0166
   # Number of simultaneous backup jobs
   # [default: 1]
   rsync-workers: 2

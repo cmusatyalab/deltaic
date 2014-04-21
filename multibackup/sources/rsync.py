@@ -5,6 +5,7 @@ import sys
 
 from ..command import make_subcommand_group
 from ..source import Task, Source
+from ..util import random_do_work
 
 def remote_command(host, command):
     args = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no',
@@ -27,7 +28,7 @@ def run_rsync(cmd):
     return proc.wait()
 
 
-def sync_host(host, root_dir, mounts, exclude=(), rsync=None):
+def sync_host(host, root_dir, mounts, exclude=(), scrub=False, rsync=None):
     if rsync is None:
         rsync = 'rsync'
     args = [rsync, '-aHRxi', '--acls', '--xattrs', '--fake-super', '--delete',
@@ -37,6 +38,8 @@ def sync_host(host, root_dir, mounts, exclude=(), rsync=None):
     args.extend(['root@%s:%s' % (host, mount.rstrip('/') or '/')
             for mount in mounts])
     args.append(root_dir.rstrip('/'))
+    if scrub:
+        args.append('--checksum')
 
     ret = run_rsync(args)
     if ret in (2, 10):
@@ -68,7 +71,8 @@ def cmd_rsync_backup(config, args):
 
     if 'pre' in info:
         remote_command(args.host, info['pre'])
-    sync_host(args.host, root_dir, info['mounts'], exclude, rsync=rsync)
+    sync_host(args.host, root_dir, info['mounts'], exclude, scrub=args.scrub,
+            rsync=rsync)
     if 'post' in info:
         remote_command(args.host, info['post'])
 
@@ -82,6 +86,8 @@ def _setup():
     parser.set_defaults(func=cmd_rsync_backup)
     parser.add_argument('host',
             help='host to back up')
+    parser.add_argument('-c', '--scrub', action='store_true',
+            help='check backup data against original')
 
 _setup()
 
@@ -91,6 +97,8 @@ class RsyncTask(Task):
         Task.__init__(self, settings)
         self.root = get_relroot(hostname, info)
         self.args = ['rsync', 'backup', hostname]
+        if random_do_work(settings, 'rsync-scrub-probability', 0.0166):
+            self.args.append('-c')
 
 
 class RsyncSource(Source):
