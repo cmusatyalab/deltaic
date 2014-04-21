@@ -5,7 +5,6 @@ import dateutil.parser
 import json
 from multiprocessing import Pool
 import os
-import random
 import subprocess
 import sys
 import time
@@ -13,7 +12,7 @@ import xml.etree.cElementTree as ET
 
 from ..command import make_subcommand_group
 from ..source import Task, Source
-from ..util import BloomSet, update_file, write_atomic
+from ..util import BloomSet, update_file, write_atomic, random_do_work
 
 KEY_METADATA_ATTRS = {
     'cache_control': 'Cache-Control',
@@ -395,8 +394,7 @@ class BucketTask(Task):
         Task.__init__(self, settings)
         self.root = get_relroot(name)
         self.args = ['rgw', 'backup', name]
-        force_acl_prob = settings.get('rgw-force-acl-probability', 0.0166)
-        if random.random() < force_acl_prob:
+        if random_do_work(settings, 'rgw-force-acl-probability', 0.0166):
             self.args.append('-A')
 
 

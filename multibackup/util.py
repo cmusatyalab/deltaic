@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 import os
 from pybloom import ScalableBloomFilter
+import random
 from tempfile import mkstemp
 
 TEMPFILE_PREFIX = '.backup-tmp'
@@ -63,3 +64,8 @@ def update_file(path, data, prefix=TEMPFILE_PREFIX, suffix=''):
     with write_atomic(path, prefix=prefix, suffix=suffix) as fh:
         fh.write(data)
     return True
+
+
+def random_do_work(settings, option, default_probability):
+    # Decide probabilistically whether to do some extra work.
+    return random.random() < settings.get(option, default_probability)

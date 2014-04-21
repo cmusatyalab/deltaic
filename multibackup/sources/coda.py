@@ -1,5 +1,4 @@
 import os
-import random
 import re
 import shutil
 import stat
@@ -10,7 +9,7 @@ import xattr
 from ..command import make_subcommand_group
 from ..platform import lutime
 from ..source import Task, Source
-from ..util import BloomSet, write_atomic
+from ..util import BloomSet, write_atomic, random_do_work
 
 ATTR_INCREMENTAL = 'user.coda.incremental-ok'
 ATTR_STAT = 'user.rsync.%stat'
@@ -305,7 +304,7 @@ class CodaTask(Task):
         Task.__init__(self, settings)
         self.root = get_relroot(server, volume)
         self.args = ['coda', 'backup', server, volume]
-        if random.random() >= settings.get('coda-full-probability', 0.143):
+        if random_do_work(settings, 'coda-full-probability', 0.143):
             self.args.append('-i')
 
 
