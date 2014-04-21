@@ -43,6 +43,10 @@ settings:
   # OAuth token obtained from "multibackup github auth"
   # [required]
   github-token: my_token
+  # The probability that the data and metadata for a repository will be
+  # revalidated
+  # [default: 0.0333]
+  github-scrub-probability: 0.0333
   # The path to git on the local server
   # [default: git]
   github-git-path: /usr/local/bin/git

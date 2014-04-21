@@ -10,7 +10,7 @@ import yaml
 
 from ..command import make_subcommand_group, get_cmdline_for_subcommand
 from ..source import Task, Source
-from ..util import update_file
+from ..util import update_file, random_do_work
 
 OAUTH_SCOPES = ('read:org', 'repo')
 TOKEN_NOTE = 'multibackup github source'
@@ -21,7 +21,7 @@ def write_json(path, info):
     update_file(path, json.dumps(info, sort_keys=True) + '\n')
 
 
-def update_git(url, root_dir, token, git_path=None):
+def update_git(url, root_dir, token, scrub=False, git_path=None):
     if git_path is None:
         git_path = 'git'
     if not os.path.exists(root_dir):
@@ -50,8 +50,13 @@ def update_git(url, root_dir, token, git_path=None):
                 raise
         time.sleep(1)
 
+    if scrub:
+        cmd = [git_path, 'fsck', '--no-dangling', '--no-progress']
+        print ' '.join(cmd)
+        subprocess.check_call(cmd, cwd=root_dir)
 
-def sync_repo(repo, root_dir, token, git_path=None):
+
+def sync_repo(repo, root_dir, token, scrub=False, git_path=None):
     if not os.path.exists(root_dir):
         os.makedirs(root_dir)
 
@@ -67,10 +72,11 @@ def sync_repo(repo, root_dir, token, git_path=None):
 
     # Git
     update_git(repo.clone_url, os.path.join(root_dir, 'repo'), token,
-            git_path=git_path)
+            scrub=scrub, git_path=git_path)
     if repo.has_wiki:
         update_git(re.sub('\.git$', '.wiki', repo.clone_url),
-                os.path.join(root_dir, 'wiki'), token, git_path=git_path)
+                os.path.join(root_dir, 'wiki'), token, scrub=scrub,
+                git_path=git_path)
 
 
 def sync_org(org, root_dir):
@@ -137,7 +143,8 @@ def cmd_github_backup(config, args):
         root_dir = os.path.join(settings['root'],
                 get_relroot(args.organization, args.repo))
         sync_repo(gh.repository(args.organization, args.repo),
-                root_dir, token, git_path=settings.get('github-git-path'))
+                root_dir, token, scrub=args.scrub,
+                git_path=settings.get('github-git-path'))
     else:
         root_dir = os.path.join(settings['root'],
                 get_relroot(args.organization))
@@ -169,6 +176,8 @@ def _setup():
             help='organization name')
     parser.add_argument('repo', nargs='?',
             help='repository name (omit to back up organization metadata)')
+    parser.add_argument('-c', '--scrub', action='store_true',
+            help='check backup data against original')
 
     parser = group.add_parser('ls',
             help='list repositories in the specified GitHub organization')
@@ -186,6 +195,8 @@ class GitHubTask(Task):
         self.args = ['github', 'backup', org]
         if repo:
             self.args.append(repo)
+        if random_do_work(settings, 'github-scrub-probability', 0.0333):
+            self.args.append('-c')
 
 
 class GitHubSource(Source):
