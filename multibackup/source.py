@@ -9,6 +9,8 @@ from .command import get_cmdline_for_subcommand
 
 class Task(object):
     DATE_FMT = '%Y%m%d'
+    LOG_EXCERPT_MAX_BYTES = 4096
+    LOG_EXCERPT_MAX_LINES = 10
 
     def __init__(self, settings):
         self._settings = settings
@@ -41,7 +43,14 @@ class Task(object):
                             fh.write('# Task exited with status %d\n' % ret)
                         fh.write('# Ending task at %s\n\n' % timestamp())
         if ret:
-            sys.stderr.write('Failed:  %s\n' % self)
+            with open(log_base + '.err') as err:
+                err.seek(0, 2)
+                err.seek(max(0, err.tell() - self.LOG_EXCERPT_MAX_BYTES))
+                excerpt = err.read(self.LOG_EXCERPT_MAX_BYTES).strip()
+                excerpt_lines = (['[...]'] +
+                        excerpt.split('\n')[-self.LOG_EXCERPT_MAX_LINES:])
+                excerpt = '\n'.join(' ' * 2 + l for l in excerpt_lines)
+            sys.stderr.write('Failed:  %s\n%s\n' % (self, excerpt))
         sys.stdout.write('Ending   %s\n' % self)
 
         return ret == 0
