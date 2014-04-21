@@ -193,7 +193,8 @@ class GitHubSource(Source):
 
     def __init__(self, config):
         Source.__init__(self, config)
-        for org in self._manifest:
+        for org, info in self._manifest.items():
+            info = info or {}
             # Dynamically obtain list of repos
             cmd = get_cmdline_for_subcommand(['github', 'ls', org])
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
@@ -202,7 +203,8 @@ class GitHubSource(Source):
                 raise IOError("Couldn't list GitHub repos for %s" % org)
             repos = [r for r in out.split('\n') if r]
             # Update org metadata
-            self._queue.put(GitHubTask(self._settings, org))
+            if info.get('organization-metadata', True):
+                self._queue.put(GitHubTask(self._settings, org))
             # Update repos
             for repo in repos:
                 self._queue.put(GitHubTask(self._settings, org, repo))

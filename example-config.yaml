@@ -107,7 +107,11 @@ coda:
 github:
   # A GitHub organization
   # [default: no organizations]
-  - jquery
+  jquery:
+    # Whether to back up organization metadata (team membership, etc.)
+    # Requires an account with admin access to the organization.
+    # [default: true]
+    organization-metadata: true
 
 ## Backup targets for rbd source
 rbd:
