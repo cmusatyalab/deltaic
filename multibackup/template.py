@@ -8,9 +8,9 @@ TEMPLATES = {
     'crontab': '''
 MAILTO = %(email)s
 
-0 21 * * * %(prog)s prune
-55 21 * * * %(prog)s df -c
-0 22 * * * %(prog)s run >/dev/null && echo "OK"
+0 23 * * * %(prog)s prune
+55 23 * * * %(prog)s df -c
+0 0 * * * %(prog)s run >/dev/null && echo "OK"
 ''',
 
     'sudoers': '''
