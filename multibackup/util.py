@@ -1,3 +1,4 @@
+import calendar
 from contextlib import contextmanager
 from cStringIO import StringIO
 import os
@@ -183,6 +184,10 @@ def _test_update_file():
 def random_do_work(settings, option, default_probability):
     # Decide probabilistically whether to do some extra work.
     return random.random() < settings.get(option, default_probability)
+
+
+def datetime_to_time_t(dt):
+    return calendar.timegm(dt.utctimetuple())
 
 
 if __name__ == '__main__':

@@ -1,6 +1,5 @@
 import boto
 from boto.s3.connection import OrdinaryCallingFormat
-import calendar
 import dateutil.parser
 import json
 from multiprocessing import Pool
@@ -12,7 +11,8 @@ import xml.etree.cElementTree as ET
 
 from ..command import make_subcommand_group
 from ..source import Task, Source
-from ..util import BloomSet, update_file, write_atomic, random_do_work
+from ..util import (BloomSet, update_file, write_atomic, random_do_work,
+        datetime_to_time_t)
 
 KEY_METADATA_ATTRS = {
     'cache_control': 'Cache-Control',
@@ -131,7 +131,7 @@ def sync_pool_init(root_dir_, server, bucket_name, access_key, secret_key,
 
 def sync_key(args):
     key_name, key_size, key_date = args
-    key_time = calendar.timegm(dateutil.parser.parse(key_date).utctimetuple())
+    key_time = datetime_to_time_t(dateutil.parser.parse(key_date))
     out_data = key_name_to_path(root_dir, key_name, 'k')
     out_meta = key_name_to_path(root_dir, key_name, 'm')
     out_acl = key_name_to_path(root_dir, key_name, 'a')
