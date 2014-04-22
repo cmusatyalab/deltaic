@@ -9,11 +9,10 @@ import xattr
 from ..command import make_subcommand_group
 from ..platform import lutime
 from ..source import Task, Source
-from ..util import BloomSet, write_atomic, random_do_work
+from ..util import BloomSet, update_file, random_do_work
 
 ATTR_INCREMENTAL = 'user.coda.incremental-ok'
 ATTR_STAT = 'user.rsync.%stat'
-BLOCKSIZE = 256 << 10
 
 class DumpError(Exception):
     pass
@@ -127,20 +126,12 @@ def update_dir_from_tar(tar, root_dir):
             # Go back and set mtime after directory has been populated
             directories.append(entry)
         elif entry.isfile():
-            if (not st or entry.size != st.st_size or
-                    entry.mtime != st.st_mtime):
+            # update_file() will break hard links if it modifies the file. 
+            # This is what we want because links may have also been broken
+            # at the source.  codadump2tar always dumps hard links, so we
+            # will rebuild any links that should still exist.
+            if update_file(path, tar.extractfile(entry)):
                 print 'f', path
-                ifh = tar.extractfile(entry)
-                # write_atomic() will break hard links, which is what we
-                # want because links may have also been broken at the source.
-                # codadump2tar always dumps hard links, so we will rebuild
-                # any links that should still exist.
-                with write_atomic(path) as ofh:
-                    while True:
-                        buf = ifh.read(BLOCKSIZE)
-                        if not buf:
-                            break
-                        ofh.write(buf)
         elif entry.issym():
             if st is None or os.readlink(path) != entry.linkname:
                 print 's', path
