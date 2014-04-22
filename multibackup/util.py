@@ -1,8 +1,9 @@
 from contextlib import contextmanager
+from cStringIO import StringIO
 import os
 from pybloom import ScalableBloomFilter
 import random
-from tempfile import mkstemp
+from tempfile import mkdtemp, mkstemp
 
 TEMPFILE_PREFIX = '.backup-tmp'
 
@@ -49,23 +50,140 @@ def write_atomic(path, prefix=TEMPFILE_PREFIX, suffix=''):
         raise
 
 
-def update_file(path, data, prefix=TEMPFILE_PREFIX, suffix=''):
+def update_file(path, data, prefix=TEMPFILE_PREFIX, suffix='',
+        block_size=256 << 10):
     # Avoid unnecessary LVM COW by only updating the file if its data has
-    # changed.
+    # changed.  data can be a string or a file-like object which does
+    # not need to be seekable.
     #
     # Any source using this function must eventually garbage-collect
     # temporary files, and must ignore them during restores.
+
+    if not hasattr(data, 'read'):
+        data = StringIO(data)
+
+    # Open old file if it exists
     try:
-        with open(path, 'rb') as fh:
-            if fh.read() == data:
-                return False
+        oldfh = open(path, 'rb')
     except IOError:
-        pass
-    with write_atomic(path, prefix=prefix, suffix=suffix) as fh:
-        fh.write(data)
-    return True
+        oldfh = None
+
+    try:
+        # Find length of common prefix
+        prefix_len = 0
+        databuf = ''
+        while oldfh:
+            oldbuf = oldfh.read(block_size)
+            if oldbuf == '':
+                databuf = data.read(block_size)
+                if databuf == '':
+                    # Files are identical
+                    return False
+                break
+            databuf = data.read(len(oldbuf))
+            if oldbuf != databuf:
+                break
+            prefix_len += len(databuf)
+
+        # Write new file
+        with write_atomic(path, prefix=prefix, suffix=suffix) as newfh:
+            # Copy common prefix
+            if oldfh:
+                oldfh.seek(0)
+                while prefix_len:
+                    buf = oldfh.read(min(block_size, prefix_len))
+                    newfh.write(buf)
+                    prefix_len -= len(buf)
+
+            # Copy leftover data from common-prefix search
+            newfh.write(databuf)
+
+            # Copy remaining data
+            while True:
+                databuf = data.read(block_size)
+                if databuf == '':
+                    break
+                newfh.write(databuf)
+
+        return True
+    finally:
+        if oldfh:
+            oldfh.close()
+
+
+def _test_update_file():
+    data = ''.join(chr(random.getrandbits(8)) for i in range((2 << 20) + 30))
+    dirpath = mkdtemp(prefix='update-file-')
+    path = os.path.join(dirpath, 'file')
+
+    def init(data):
+        with open(path, 'wb') as fh:
+            fh.write(data)
+    def change_byte(data, index):
+        char = ord(data[index])
+        char += 1
+        if char > 255:
+            char = 0
+        return data[0:index] + chr(char) + data[index + 1:]
+    def check(data):
+        with open(path, 'rb') as fh:
+            assert fh.read() == data
+
+    try:
+        # Write new file
+        assert not os.path.exists(path)
+        assert update_file(path, data)
+        check(data)
+
+        # Update file, nothing changed
+        mtime = os.stat(path).st_mtime
+        assert not update_file(path, data)
+        check(data)
+        assert os.stat(path).st_mtime == mtime
+
+        # Update empty file
+        open(path, 'w').close()
+        assert os.stat(path).st_size == 0
+        assert update_file(path, data)
+        check(data)
+
+        # Update file starting from various byte offsets
+        for offset in 0, 1000, 512 << 10, 520 << 10:
+            init(data)
+            ndata = change_byte(data, offset)
+            ndata = change_byte(ndata, 1 << 20)
+            assert update_file(path, ndata)
+            check(ndata)
+
+        # Extend file
+        init(data)
+        ndata = data + 'asdfghjkl'
+        assert update_file(path, ndata)
+        check(ndata)
+
+        # Truncate file
+        init(data)
+        ndata = data[:300000]
+        assert update_file(path, ndata)
+        check(ndata)
+
+        # File handle
+        init(data)
+        ndata = change_byte(data, 1234567)
+        assert update_file(path, StringIO(ndata))
+        check(ndata)
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        os.rmdir(dirpath)
 
 
 def random_do_work(settings, option, default_probability):
     # Decide probabilistically whether to do some extra work.
     return random.random() < settings.get(option, default_probability)
+
+
+if __name__ == '__main__':
+    _test_update_file()
