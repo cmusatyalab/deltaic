@@ -45,12 +45,17 @@ class Task(object):
         if ret:
             with open(log_base + '.err') as err:
                 err.seek(0, 2)
-                err.seek(max(0, err.tell() - self.LOG_EXCERPT_MAX_BYTES))
+                start = max(0, err.tell() - self.LOG_EXCERPT_MAX_BYTES)
+                err.seek(start)
                 excerpt = err.read(self.LOG_EXCERPT_MAX_BYTES).strip()
-                excerpt_lines = (['[...]'] +
-                        excerpt.split('\n')[-self.LOG_EXCERPT_MAX_LINES:])
+                excerpt_lines = excerpt.split('\n')
+                if (len(excerpt_lines) > self.LOG_EXCERPT_MAX_LINES or
+                        start > 0):
+                    excerpt_lines = (['[...]'] +
+                            excerpt_lines[-self.LOG_EXCERPT_MAX_LINES:])
                 excerpt = '\n'.join(' ' * 2 + l for l in excerpt_lines)
-            sys.stderr.write('Failed:  %s\n%s\n' % (self, excerpt))
+            sys.stderr.write('Failed:  %s\n  %s\n%s\n' % (self,
+                    ' '.join(command), excerpt))
         sys.stdout.write('Ending   %s\n' % self)
 
         return ret == 0
