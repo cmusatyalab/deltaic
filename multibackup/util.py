@@ -31,6 +31,27 @@ class BloomSet(object):
         return self._bloom_salt + name
 
 
+def gc_directory_tree(root_dir, valid_paths, report_callback=None):
+    if report_callback is None:
+        report_callback = lambda path, is_dir: None
+    def handle_err(err):
+        raise err
+    for dirpath, _, filenames in os.walk(root_dir, topdown=False,
+            onerror=handle_err):
+        for filename in filenames:
+            filepath = os.path.join(dirpath, filename)
+            if filepath not in valid_paths:
+                report_callback(filepath, False)
+                os.unlink(filepath)
+        if dirpath not in valid_paths:
+            try:
+                os.rmdir(dirpath)
+                report_callback(dirpath, True)
+            except OSError:
+                # Directory not empty
+                pass
+
+
 @contextmanager
 def write_atomic(path, prefix=TEMPFILE_PREFIX, suffix=''):
     # Open a temporary file for writing.  On successfully exiting the

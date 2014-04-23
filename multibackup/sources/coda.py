@@ -9,7 +9,7 @@ import xattr
 from ..command import make_subcommand_group
 from ..platform import lutime
 from ..source import Task, Source
-from ..util import BloomSet, update_file, random_do_work
+from ..util import BloomSet, gc_directory_tree, update_file, random_do_work
 
 ATTR_INCREMENTAL = 'user.coda.incremental-ok'
 ATTR_STAT = 'user.rsync.%stat'
@@ -215,25 +215,6 @@ def update_dir(host, backup_id, root_dir, incremental=False, volutil=None,
     return valid_paths
 
 
-def remove_deleted(root_dir, valid_paths):
-    def handle_err(err):
-        raise err
-    for dirpath, _, filenames in os.walk(root_dir, topdown=False,
-            onerror=handle_err):
-        for filename in filenames:
-            filepath = os.path.join(dirpath, filename)
-            if filepath not in valid_paths:
-                print '-', filepath
-                os.unlink(filepath)
-        if dirpath not in valid_paths:
-            try:
-                os.rmdir(dirpath)
-                print '-', dirpath
-            except OSError:
-                # Directory not empty
-                pass
-
-
 def sync_backup_volume(host, volume, root_dir, incremental=False,
         verbose=False, volutil=None, codadump2tar=None):
     if not os.path.exists(root_dir):
@@ -264,7 +245,9 @@ def sync_backup_volume(host, volume, root_dir, incremental=False,
                 raise
 
     if not incremental:
-        remove_deleted(root_dir, valid_paths)
+        def report(path, is_dir):
+            print '-', path
+        gc_directory_tree(root_dir, valid_paths, report)
 
     subprocess.check_call(volutil_cmd(host, 'ancient', [backup_id],
             volutil=volutil), stderr=get_err_stream(verbose))
