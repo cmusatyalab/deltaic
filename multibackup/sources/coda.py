@@ -13,7 +13,7 @@ from ..util import BloomSet, update_file, random_do_work
 
 ATTR_INCREMENTAL = 'user.coda.incremental-ok'
 ATTR_STAT = 'user.rsync.%stat'
-DUMP_ATTEMPTS = 5
+DUMP_ATTEMPTS = 10
 
 class DumpError(Exception):
     pass
