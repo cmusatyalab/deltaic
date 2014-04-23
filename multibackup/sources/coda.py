@@ -13,6 +13,7 @@ from ..util import BloomSet, update_file, random_do_work
 
 ATTR_INCREMENTAL = 'user.coda.incremental-ok'
 ATTR_STAT = 'user.rsync.%stat'
+DUMP_ATTEMPTS = 5
 
 class DumpError(Exception):
     pass
@@ -252,7 +253,7 @@ def sync_backup_volume(host, volume, root_dir, incremental=False,
     _, backup_id = get_volume_ids(host, volume, verbose, volutil=volutil)
 
     # Retry dump a few times to paper over rpc2 timeouts
-    for tries_remaining in range(4, -1, -1):
+    for tries_remaining in range(DUMP_ATTEMPTS - 1, -1, -1):
         try:
             valid_paths = update_dir(host, backup_id, root_dir,
                     incremental=incremental, volutil=volutil,

@@ -12,6 +12,7 @@ from ..command import make_subcommand_group, get_cmdline_for_subcommand
 from ..source import Task, Source
 from ..util import update_file, random_do_work
 
+GIT_ATTEMPTS = 5
 OAUTH_SCOPES = ('read:org', 'repo')
 TOKEN_NOTE = 'multibackup github source'
 TOKEN_NOTE_URL = 'https://github.com/cmusatyalab/multibackup'
@@ -40,7 +41,7 @@ def update_git(url, root_dir, token, scrub=False, git_path=None):
         'MB_ASKPASS_PASS': '',
     })
 
-    for tries_remaining in range(4, -1, -1):
+    for tries_remaining in range(GIT_ATTEMPTS - 1, -1, -1):
         try:
             print ' '.join(cmd)
             subprocess.check_call(cmd, cwd=cwd, env=env)
