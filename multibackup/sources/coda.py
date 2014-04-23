@@ -81,6 +81,26 @@ def update_xattr(attrs, key, value):
         attrs[key] = value
 
 
+class TarMemberFile(object):
+    # Wrapper around tarfile.ExFileObject that raises DumpError when
+    # the tar stream is truncated mid-file.  This prevents us from
+    # replacing a complete backup file with a truncated one.
+
+    def __init__(self, tar, entry):
+        self._file = tar.extractfile(entry)
+        self._remaining = entry.size
+
+    def read(self, size=None):
+        buf = self._file.read(size)
+        self._remaining -= len(buf)
+        if self._remaining > 0 and (buf == '' or size is None):
+            raise DumpError("Premature EOF on tar stream")
+        return buf
+
+    def close(self):
+        self._file.close()
+
+
 def update_dir_from_tar(tar, root_dir):
     directories = []
     valid_paths = BloomSet()
@@ -130,7 +150,7 @@ def update_dir_from_tar(tar, root_dir):
             # This is what we want because links may have also been broken
             # at the source.  codadump2tar always dumps hard links, so we
             # will rebuild any links that should still exist.
-            if update_file(path, tar.extractfile(entry)):
+            if update_file(path, TarMemberFile(tar, entry)):
                 print 'f', path
         elif entry.issym():
             if st is None or os.readlink(path) != entry.linkname:
