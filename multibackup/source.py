@@ -6,6 +6,7 @@ import sys
 from threading import Thread
 
 from .command import get_cmdline_for_subcommand
+from .util import make_dir_path
 
 class Task(object):
     DATE_FMT = '%Y%m%d'
@@ -19,9 +20,7 @@ class Task(object):
         return self.root
 
     def run(self):
-        log_dir = os.path.join(self._settings['root'], 'Logs', self.root)
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
+        log_dir = make_dir_path(self._settings['root'], 'Logs', self.root)
         log_base = os.path.join(log_dir, date.today().strftime(self.DATE_FMT))
         timestamp = lambda: datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 

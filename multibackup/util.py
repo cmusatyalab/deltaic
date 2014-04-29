@@ -1,6 +1,7 @@
 import calendar
 from contextlib import contextmanager
 from cStringIO import StringIO
+import errno
 import os
 from pybloom import ScalableBloomFilter
 import random
@@ -209,6 +210,16 @@ def random_do_work(settings, option, default_probability):
 
 def datetime_to_time_t(dt):
     return calendar.timegm(dt.utctimetuple())
+
+
+def make_dir_path(*args):
+    path = os.path.join(*args)
+    try:
+        os.makedirs(path)
+    except OSError, e:
+        if e.errno != errno.EEXIST:
+            raise
+    return path
 
 
 if __name__ == '__main__':

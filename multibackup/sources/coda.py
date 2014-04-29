@@ -9,7 +9,8 @@ import xattr
 from ..command import make_subcommand_group
 from ..platform import lutime
 from ..source import Task, Source
-from ..util import BloomSet, gc_directory_tree, update_file, random_do_work
+from ..util import (BloomSet, gc_directory_tree, update_file, random_do_work,
+        make_dir_path)
 
 ATTR_INCREMENTAL = 'user.coda.incremental-ok'
 ATTR_STAT = 'user.rsync.%stat'
@@ -135,9 +136,7 @@ def update_dir_from_tar(tar, root_dir):
 
         # Create parent directory if not present.  Parents are not
         # necessarily dumped before children.
-        dirpath = os.path.dirname(path)
-        if not os.path.exists(dirpath):
-            os.makedirs(dirpath)
+        dirpath = make_dir_path(os.path.dirname(path))
 
         # Create new object
         if entry.isdir():
@@ -217,8 +216,7 @@ def update_dir(host, backup_id, root_dir, incremental=False, volutil=None,
 
 def sync_backup_volume(host, volume, root_dir, incremental=False,
         verbose=False, volutil=None, codadump2tar=None):
-    if not os.path.exists(root_dir):
-        os.makedirs(root_dir)
+    make_dir_path(root_dir)
 
     # Force a full backup unless the root_dir is marked incremental-ok.
     # This ensures that the first backup is a full.  Remove incremental-ok

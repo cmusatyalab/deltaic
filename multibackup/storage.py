@@ -4,6 +4,7 @@ import os
 import subprocess
 
 from .command import subparsers
+from .util import make_dir_path
 
 class Snapshot(object):
     DATE_FMT = '%Y%m%d'
@@ -155,11 +156,9 @@ def cmd_mount(config, args):
     vg, _ = settings['backup-lv'].split('/')
     if '/' in args.snapshot:
         raise ValueError('Invalid snapshot: %s' % args.snapshot)
-    mountpoint = os.path.join(settings['root'], 'Snapshots', args.snapshot)
     subprocess.check_call(['sudo', 'lvchange', '-a', 'y', '-K',
             '%s/%s' % (vg, args.snapshot)])
-    if not os.path.exists(mountpoint):
-        os.makedirs(mountpoint)
+    mountpoint = make_dir_path(settings['root'], 'Snapshots', args.snapshot)
     subprocess.check_call(['sudo', 'mount', '-o', 'ro',
             '/dev/%s/%s' % (vg, args.snapshot), mountpoint])
     print mountpoint

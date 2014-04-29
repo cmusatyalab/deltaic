@@ -12,7 +12,7 @@ import xml.etree.cElementTree as ET
 from ..command import make_subcommand_group
 from ..source import Task, Source
 from ..util import (BloomSet, update_file, write_atomic, random_do_work,
-        datetime_to_time_t)
+        datetime_to_time_t, make_dir_path)
 
 KEY_METADATA_ATTRS = {
     'cache_control': 'Cache-Control',
@@ -146,13 +146,7 @@ def sync_key(args):
     if not need_update and not force_acls:
         return (None, None)
 
-    if not os.path.isdir(out_dir):
-        try:
-            os.makedirs(out_dir)
-        except OSError:
-            # Either we lost the race with other threads, or we failed for
-            # other reasons.  In the latter case, writing the data will fail.
-            pass
+    make_dir_path(out_dir)
 
     key = download_bucket.new_key(key_name)
     try:
@@ -201,8 +195,7 @@ def sync_bucket(server, bucket_name, root_dir, workers, force_acls, secure):
     bucket = conn.get_bucket(bucket_name)
 
     # Create root directory
-    if not os.path.exists(root_dir):
-        os.makedirs(root_dir)
+    make_dir_path(root_dir)
 
     # Keys
     start_time = time.time()

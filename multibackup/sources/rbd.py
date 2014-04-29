@@ -9,6 +9,7 @@ import xattr
 from ..command import make_subcommand_group
 from ..platform import punch
 from ..source import Task, Source
+from ..util import make_dir_path
 
 BLOCKSIZE = 256 << 10
 DIFF_MAGIC = 'rbd diff v1\n'
@@ -273,13 +274,7 @@ def cmd_rbd_backup(config, args):
             else 'images'][args.friendly_name]
     out_path = os.path.join(settings['root'],
             get_relroot(args.pool, args.friendly_name, snapshot=args.snapshot))
-    basedir = os.path.dirname(out_path)
-    if not os.path.exists(basedir):
-        try:
-            os.makedirs(basedir)
-        except OSError:
-            # Lost the race with another process?
-            pass
+    basedir = make_dir_path(os.path.dirname(out_path))
     if args.snapshot:
         backup_snapshot(args.pool, object_name, out_path)
     else:

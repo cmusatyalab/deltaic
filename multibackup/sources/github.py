@@ -12,7 +12,7 @@ import yaml
 from ..command import make_subcommand_group, get_cmdline_for_subcommand
 from ..source import Task, Source
 from ..util import (BloomSet, write_atomic, update_file, random_do_work,
-        datetime_to_time_t, gc_directory_tree)
+        datetime_to_time_t, gc_directory_tree, make_dir_path)
 
 ATTR_CONTENT_TYPE = 'user.github.content-type'
 GIT_ATTEMPTS = 5
@@ -64,9 +64,7 @@ def update_releases(repo, root_dir):
     valid_paths = BloomSet()
     releases_dir = os.path.join(root_dir, 'releases')
     for release in repo.iter_releases():
-        release_dir = os.path.join(releases_dir, release.tag_name)
-        if not os.path.exists(release_dir):
-            os.makedirs(release_dir)
+        release_dir = make_dir_path(releases_dir, release.tag_name)
 
         # Metadata
         info = {
@@ -82,10 +80,8 @@ def update_releases(repo, root_dir):
         valid_paths.add(metadata_path)
 
         # Assets
-        asset_dir = os.path.join(release_dir, 'assets')
+        asset_dir = make_dir_path(release_dir, 'assets')
         for asset in release.iter_assets():
-            if not os.path.exists(asset_dir):
-                os.makedirs(asset_dir)
             asset_path = os.path.join(asset_dir, asset.name)
             mtime = datetime_to_time_t(asset.updated_at)
             valid_paths.add(asset_path)
@@ -109,8 +105,7 @@ def update_releases(repo, root_dir):
 
 
 def sync_repo(repo, root_dir, token, scrub=False, git_path=None):
-    if not os.path.exists(root_dir):
-        os.makedirs(root_dir)
+    make_dir_path(root_dir)
 
     # Repo metadata
     info = {
@@ -135,8 +130,7 @@ def sync_repo(repo, root_dir, token, scrub=False, git_path=None):
 
 
 def sync_org(org, root_dir):
-    if not os.path.exists(root_dir):
-        os.makedirs(root_dir)
+    make_dir_path(root_dir)
 
     teams = {}
     for team in org.iter_teams():
