@@ -15,6 +15,7 @@ from ..util import (BloomSet, write_atomic, update_file, random_do_work,
         datetime_to_time_t, gc_directory_tree, make_dir_path)
 
 ATTR_CONTENT_TYPE = 'user.github.content-type'
+ATTR_ETAG = 'user.github.etag'
 GIT_ATTEMPTS = 5
 OAUTH_SCOPES = ('read:org', 'repo')
 TOKEN_NOTE = 'multibackup github source'
@@ -23,6 +24,34 @@ USER_AGENT = 'multibackup-github/1'
 
 def write_json(path, info):
     update_file(path, json.dumps(info, sort_keys=True) + '\n')
+
+
+class cond_iter(object):
+    '''An iterable that wraps a github3 iterator, enabling conditional
+    requests.  The ETag is saved as an xattr on the specified path.  func is
+    the github3 iter_* function.  If scrub is True, perform the request
+    unconditionally.  *args and **kwargs are passed to the func.  If the
+    request returns 304 Not Modified, the iterator returns no objects and
+    the skipped attribute is set to True.'''
+
+    def __init__(self, path, func, scrub=False, *args, **kwargs):
+        self._attrs = xattr.xattr(path, xattr.XATTR_NOFOLLOW)
+        try:
+            self._prev_etag = self._attrs[ATTR_ETAG]
+        except KeyError:
+            self._prev_etag = None
+        if self._prev_etag and not scrub:
+            kwargs['etag'] = self._prev_etag
+        self._func = lambda: func(*args, **kwargs)
+        self.skipped = None
+
+    def __iter__(self):
+        iter = self._func()
+        for item in iter:
+            yield item
+        if iter.etag and iter.etag != self._prev_etag:
+            self._attrs[ATTR_ETAG] = iter.etag
+        self.skipped = iter.last_status == 304
 
 
 def update_git(url, root_dir, token, scrub=False, git_path=None):
@@ -60,10 +89,13 @@ def update_git(url, root_dir, token, scrub=False, git_path=None):
         subprocess.check_call(cmd, cwd=root_dir)
 
 
-def update_releases(repo, root_dir):
+def update_releases(repo, root_dir, scrub=False):
     valid_paths = BloomSet()
-    releases_dir = os.path.join(root_dir, 'releases')
-    for release in repo.iter_releases():
+    releases_dir = make_dir_path(root_dir, 'releases')
+    valid_paths.add(releases_dir)
+    # Releases response includes asset data, so cond_iter is safe
+    release_iter = cond_iter(releases_dir, repo.iter_releases, scrub=scrub)
+    for release in release_iter:
         release_dir = make_dir_path(releases_dir, release.tag_name)
 
         # Metadata
@@ -81,7 +113,9 @@ def update_releases(repo, root_dir):
 
         # Assets
         asset_dir = make_dir_path(release_dir, 'assets')
-        for asset in release.iter_assets():
+        valid_paths.add(asset_dir)
+        asset_iter = cond_iter(asset_dir, release.iter_assets, scrub=scrub)
+        for asset in asset_iter:
             asset_path = os.path.join(asset_dir, asset.name)
             mtime = datetime_to_time_t(asset.updated_at)
             valid_paths.add(asset_path)
@@ -99,9 +133,16 @@ def update_releases(repo, root_dir):
             os.utime(asset_path, (mtime, mtime))
             attrs = xattr.xattr(asset_path)
             attrs[ATTR_CONTENT_TYPE] = asset.content_type.encode('utf-8')
+        if asset_iter.skipped:
+            # Update valid_paths from existing directory
+            for asset_name in os.listdir(asset_dir):
+                valid_paths.add(os.path.join(asset_dir, asset_name))
 
-    # Collect garbage
-    gc_directory_tree(releases_dir, valid_paths)
+    # Collect garbage, if anything has changed
+    if not release_iter.skipped:
+        def report(path, is_dir):
+            print '-', path
+        gc_directory_tree(releases_dir, valid_paths, report)
 
 
 def sync_repo(repo, root_dir, token, scrub=False, git_path=None):
@@ -126,7 +167,7 @@ def sync_repo(repo, root_dir, token, scrub=False, git_path=None):
                 git_path=git_path)
 
     # Releases
-    update_releases(repo, root_dir)
+    update_releases(repo, root_dir, scrub=scrub)
 
 
 def sync_org(org, root_dir):
