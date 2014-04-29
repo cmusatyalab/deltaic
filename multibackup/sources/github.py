@@ -6,12 +6,15 @@ import re
 import subprocess
 import sys
 import time
+import xattr
 import yaml
 
 from ..command import make_subcommand_group, get_cmdline_for_subcommand
 from ..source import Task, Source
-from ..util import update_file, random_do_work
+from ..util import (BloomSet, write_atomic, update_file, random_do_work,
+        datetime_to_time_t, gc_directory_tree)
 
+ATTR_CONTENT_TYPE = 'user.github.content-type'
 GIT_ATTEMPTS = 5
 OAUTH_SCOPES = ('read:org', 'repo')
 TOKEN_NOTE = 'multibackup github source'
@@ -57,6 +60,54 @@ def update_git(url, root_dir, token, scrub=False, git_path=None):
         subprocess.check_call(cmd, cwd=root_dir)
 
 
+def update_releases(repo, root_dir):
+    valid_paths = BloomSet()
+    releases_dir = os.path.join(root_dir, 'releases')
+    for release in repo.iter_releases():
+        release_dir = os.path.join(releases_dir, release.tag_name)
+        if not os.path.exists(release_dir):
+            os.makedirs(release_dir)
+
+        # Metadata
+        info = {
+            'created_at': release.created_at.isoformat(),
+            'description': release.body,
+            'draft': release.draft,
+            'name': release.name,
+            'published_at': release.published_at.isoformat(),
+            'tag_name': release.tag_name,
+        }
+        metadata_path = os.path.join(release_dir, 'info.json')
+        write_json(metadata_path, info)
+        valid_paths.add(metadata_path)
+
+        # Assets
+        asset_dir = os.path.join(release_dir, 'assets')
+        for asset in release.iter_assets():
+            if not os.path.exists(asset_dir):
+                os.makedirs(asset_dir)
+            asset_path = os.path.join(asset_dir, asset.name)
+            mtime = datetime_to_time_t(asset.updated_at)
+            valid_paths.add(asset_path)
+
+            try:
+                st = os.stat(asset_path)
+                if st.st_mtime == mtime and st.st_size == asset.size:
+                    continue
+            except OSError:
+                pass
+
+            print os.path.relpath(asset_path, root_dir)
+            with write_atomic(asset_path) as fh:
+                asset.download(fh)
+            os.utime(asset_path, (mtime, mtime))
+            attrs = xattr.xattr(asset_path)
+            attrs[ATTR_CONTENT_TYPE] = asset.content_type.encode('utf-8')
+
+    # Collect garbage
+    gc_directory_tree(releases_dir, valid_paths)
+
+
 def sync_repo(repo, root_dir, token, scrub=False, git_path=None):
     if not os.path.exists(root_dir):
         os.makedirs(root_dir)
@@ -78,6 +129,9 @@ def sync_repo(repo, root_dir, token, scrub=False, git_path=None):
         update_git(re.sub('\.git$', '.wiki', repo.clone_url),
                 os.path.join(root_dir, 'wiki'), token, scrub=scrub,
                 git_path=git_path)
+
+    # Releases
+    update_releases(repo, root_dir)
 
 
 def sync_org(org, root_dir):
