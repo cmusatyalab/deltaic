@@ -1,3 +1,4 @@
+from datetime import datetime
 from getpass import getpass
 import github3
 import json
@@ -22,8 +23,25 @@ TOKEN_NOTE = 'multibackup github source'
 TOKEN_NOTE_URL = 'https://github.com/cmusatyalab/multibackup'
 USER_AGENT = 'multibackup-github/1'
 
-def write_json(path, info):
-    update_file(path, json.dumps(info, sort_keys=True) + '\n')
+def user_str(user):
+    return user.login if user else None
+
+
+def timestamp_str(timestamp):
+    return timestamp.isoformat() if timestamp else None
+
+
+def gc_report(path, is_dir):
+    print '-', path
+
+
+def write_json(path, info, timestamp=None):
+    if update_file(path, json.dumps(info, sort_keys=True) + '\n'):
+        print 'f', path
+    if timestamp is not None:
+        mtime = datetime_to_time_t(timestamp)
+        if os.stat(path).st_mtime != mtime:
+            os.utime(path, (mtime, mtime))
 
 
 class cond_iter(object):
@@ -89,6 +107,109 @@ def update_git(url, root_dir, token, scrub=False, git_path=None):
         subprocess.check_call(cmd, cwd=root_dir)
 
 
+def update_issues(repo, root_dir, scrub=False):
+    # Issues
+    valid_paths = BloomSet()
+    issue_dir = make_dir_path(root_dir, 'issues')
+    valid_paths.add(issue_dir)
+    issue_iter = cond_iter(issue_dir, repo.iter_issues, scrub=scrub,
+            state='all')
+    for issue in issue_iter:
+        path = os.path.join(issue_dir, '%d.json' % issue.number)
+        valid_paths.add(path)
+        try:
+            # We need to make additional requests to get comments and events.
+            # Avoid if possible.
+            if (not scrub and os.stat(path).st_mtime ==
+                    datetime_to_time_t(issue.updated_at)):
+                continue
+        except OSError:
+            pass
+        info = {
+            'assignee': user_str(issue.assignee),
+            'body': issue.body,
+            'closed_at': timestamp_str(issue.closed_at),
+            'closed_by': user_str(issue.closed_by),
+            'comments': [{
+                    'created_at': timestamp_str(comment.created_at),
+                    'updated_at': timestamp_str(comment.updated_at),
+                    'user': user_str(comment.user),
+                    'body': comment.body,
+                } for comment in issue.iter_comments()],
+            'created_at': timestamp_str(issue.created_at),
+            'events': [{
+                    'actor': user_str(event.actor),
+                    'commit_id': event.commit_id,
+                    'created_at': timestamp_str(event.created_at),
+                    'event': event.event,
+                } for event in issue.iter_events()],
+            'labels': [l.name for l in issue.labels],
+            'milestone': issue.milestone.number if issue.milestone else None,
+            'number': issue.number,
+            'state': issue.state,
+            'title': issue.title,
+            'updated_at': timestamp_str(issue.updated_at),
+            'user': user_str(issue.user),
+        }
+        write_json(path, info, issue.updated_at)
+    if not issue_iter.skipped:
+        gc_directory_tree(issue_dir, valid_paths, gc_report)
+
+    # Milestones
+    valid_paths = BloomSet()
+    milestone_dir = make_dir_path(root_dir, 'milestones')
+    valid_paths.add(milestone_dir)
+    milestone_iter = cond_iter(milestone_dir, repo.iter_milestones,
+            scrub=scrub, state='all')
+    for milestone in milestone_iter:
+        info = {
+            'created_at': timestamp_str(milestone.created_at),
+            'creator': user_str(milestone.creator),
+            'description': milestone.description,
+            'due_on': timestamp_str(milestone.due_on),
+            'state': milestone.state,
+            'title': milestone.title,
+            'updated_at': timestamp_str(milestone.updated_at),
+        }
+        path = os.path.join(milestone_dir, '%d.json' % milestone.number)
+        valid_paths.add(path)
+        write_json(path, info, milestone.updated_at)
+    if not milestone_iter.skipped:
+        gc_directory_tree(milestone_dir, valid_paths, gc_report)
+
+
+def update_comments(repo, root_dir, scrub=False):
+    # Group by commit
+    valid_paths = BloomSet()
+    comment_dir = make_dir_path(root_dir, 'comments')
+    valid_paths.add(comment_dir)
+    commit_comments = {}
+    commit_timestamps = {}
+    comment_iter = cond_iter(comment_dir, repo.iter_comments, scrub=scrub)
+    for comment in comment_iter:
+        info = {
+            'body': comment.body,
+            'created_at': timestamp_str(comment.created_at),
+            'commit_id': comment.commit_id,
+            'line': comment.line,
+            'path': comment.path,
+            'position': comment.position,
+            'updated_at': timestamp_str(comment.updated_at),
+            'user': user_str(comment.user),
+        }
+        commit_id = comment.commit_id
+        commit_comments.setdefault(commit_id, []).append(info)
+        commit_timestamps[commit_id] = max(comment.updated_at,
+                commit_timestamps.get(commit_id, datetime.fromtimestamp(0)))
+    if not comment_iter.skipped:
+        for commit_id in commit_comments:
+            path = os.path.join(comment_dir, '%s.json' % commit_id)
+            valid_paths.add(path)
+            write_json(path, commit_comments[commit_id],
+                    commit_timestamps[commit_id])
+        gc_directory_tree(comment_dir, valid_paths, gc_report)
+
+
 def update_releases(repo, root_dir, scrub=False):
     valid_paths = BloomSet()
     releases_dir = make_dir_path(root_dir, 'releases')
@@ -140,9 +261,7 @@ def update_releases(repo, root_dir, scrub=False):
 
     # Collect garbage, if anything has changed
     if not release_iter.skipped:
-        def report(path, is_dir):
-            print '-', path
-        gc_directory_tree(releases_dir, valid_paths, report)
+        gc_directory_tree(releases_dir, valid_paths, gc_report)
 
 
 def sync_repo(repo, root_dir, token, scrub=False, git_path=None):
@@ -165,6 +284,13 @@ def sync_repo(repo, root_dir, token, scrub=False, git_path=None):
         update_git(re.sub('\.git$', '.wiki', repo.clone_url),
                 os.path.join(root_dir, 'wiki'), token, scrub=scrub,
                 git_path=git_path)
+
+    # Issues
+    if repo.has_issues:
+        update_issues(repo, root_dir, scrub=scrub)
+
+    # Commit comments
+    update_comments(repo, root_dir, scrub=scrub)
 
     # Releases
     update_releases(repo, root_dir, scrub=scrub)
