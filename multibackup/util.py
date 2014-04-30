@@ -6,6 +6,7 @@ import os
 from pybloom import ScalableBloomFilter
 import random
 from tempfile import mkdtemp, mkstemp
+import xattr
 
 TEMPFILE_PREFIX = '.backup-tmp'
 
@@ -201,6 +202,33 @@ def _test_update_file():
         except OSError:
             pass
         os.rmdir(dirpath)
+
+
+class XAttrs(object):
+    def __init__(self, path):
+        self._attrs = xattr.xattr(path, xattr.XATTR_NOFOLLOW)
+
+    def __contains__(self, key):
+        return key in self._attrs
+
+    def __getitem__(self, key):
+        return self._attrs[key]
+
+    def get(self, key, default=None):
+        try:
+            return self._attrs[key]
+        except KeyError:
+            return default
+
+    def update(self, key, value):
+        if self.get(key) != value:
+            self._attrs[key] = value
+
+    def delete(self, key):
+        try:
+            del self._attrs[key]
+        except KeyError:
+            pass
 
 
 def random_do_work(settings, option, default_probability):

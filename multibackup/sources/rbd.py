@@ -4,12 +4,11 @@ import struct
 import subprocess
 import sys
 import uuid
-import xattr
 
 from ..command import make_subcommand_group
 from ..platform import punch
 from ..source import Task, Source
-from ..util import make_dir_path
+from ..util import XAttrs, make_dir_path
 
 BLOCKSIZE = 256 << 10
 DIFF_MAGIC = 'rbd diff v1\n'
@@ -70,13 +69,6 @@ def try_unlink(path):
         os.unlink(path)
     except OSError:
         pass
-
-
-def attr_get(attrs, attr):
-    try:
-        return attrs[attr]
-    except KeyError:
-        return None
 
 
 def export_diff(pool, image, snapshot, basis=None, fh=subprocess.PIPE):
@@ -149,8 +141,7 @@ def fetch_snapshot(pool, image, snapshot, path):
         unpack_diff_to_file(proc.stdout, path)
         if proc.wait():
             raise IOError('Export returned %d' % proc.returncode)
-        attrs = xattr.xattr(path)
-        attrs[ATTR_SNAPSHOT] = snapshot
+        XAttrs(path).update(ATTR_SNAPSHOT, snapshot)
     except Exception:
         os.unlink(path)
         raise
@@ -166,7 +157,7 @@ def fetch_image(pool, image, path):
 
 
 def make_patch(pool, image, path):
-    attrs = xattr.xattr(path)
+    attrs = XAttrs(path)
     old_snapshot = attrs[ATTR_SNAPSHOT]
     pending_path = path + PENDING_EXT
     if ATTR_PENDING_SNAPSHOT in attrs:
@@ -181,7 +172,7 @@ def make_patch(pool, image, path):
                     fh=fh)
         if proc.wait():
             raise IOError('Export returned %d' % proc.returncode)
-        attrs[ATTR_PENDING_SNAPSHOT] = new_snapshot
+        attrs.update(ATTR_PENDING_SNAPSHOT, new_snapshot)
     except Exception:
         try_unlink(pending_path)
         delete_snapshot(pool, image, new_snapshot)
@@ -190,9 +181,9 @@ def make_patch(pool, image, path):
 
 def apply_patch_and_rebase(pool, image, path):
     pending_path = path + PENDING_EXT
-    attrs = xattr.xattr(path)
+    attrs = XAttrs(path)
     old_snapshot = attrs[ATTR_SNAPSHOT]
-    new_snapshot = attr_get(attrs, ATTR_PENDING_SNAPSHOT)
+    new_snapshot = attrs.get(ATTR_PENDING_SNAPSHOT)
     if new_snapshot is None:
         # Nothing to do
         try_unlink(pending_path)
@@ -200,14 +191,13 @@ def apply_patch_and_rebase(pool, image, path):
     with open(pending_path, 'rb') as fh:
         unpack_diff_to_file(fh, path)
     delete_snapshot(pool, image, old_snapshot)
-    attrs[ATTR_SNAPSHOT] = new_snapshot
-    del attrs[ATTR_PENDING_SNAPSHOT]
+    attrs.update(ATTR_SNAPSHOT, new_snapshot)
+    attrs.delete(ATTR_PENDING_SNAPSHOT)
     os.unlink(pending_path)
 
 
 def backup_image(pool, image, path):
-    attrs = xattr.xattr(path)
-    old_snapshot = attr_get(attrs, ATTR_SNAPSHOT)
+    old_snapshot = XAttrs(path).get(ATTR_SNAPSHOT)
     if old_snapshot is not None:
         # Check for common base image
         try:
@@ -238,28 +228,28 @@ def backup_image(pool, image, path):
 def backup_snapshot(pool, snapshot, path):
     image = get_image_for_snapshot(pool, snapshot)
     snapid = get_snapid_for_snapshot(pool, image, snapshot)
-    attrs = xattr.xattr(path)
-    if str(snapid) == attr_get(attrs, ATTR_SNAPID):
+    attrs = XAttrs(path)
+    if str(snapid) == attrs.get(ATTR_SNAPID):
         return
     # Okay, snapshot has changed.  Delete the current backup and start over.
     # (Inefficient, but we assume this doesn't happen very often.)
     fetch_snapshot(pool, image, snapshot, path)
-    attrs[ATTR_SNAPID] = str(snapid)
+    attrs.update(ATTR_SNAPID, str(snapid))
 
 
 def drop_image_snapshots(pool, path):
     if not os.path.exists(path):
         return
-    attrs = xattr.xattr(path)
+    attrs = XAttrs(path)
     for attr in ATTR_SNAPSHOT, ATTR_PENDING_SNAPSHOT:
-        snapshot = attr_get(attrs, attr)
+        snapshot = attrs.get(attr)
         if snapshot:
             try:
                 image = get_image_for_snapshot(pool, snapshot)
                 delete_snapshot(pool, image, snapshot)
             except (KeyError, subprocess.CalledProcessError):
                 pass
-            del attrs[attr]
+            attrs.delete(attr)
     try_unlink(path + PENDING_EXT)
 
 

@@ -7,13 +7,12 @@ import re
 import subprocess
 import sys
 import time
-import xattr
 import yaml
 
 from ..command import make_subcommand_group, get_cmdline_for_subcommand
 from ..source import Task, Source
-from ..util import (BloomSet, write_atomic, update_file, random_do_work,
-        datetime_to_time_t, gc_directory_tree, make_dir_path)
+from ..util import (BloomSet, write_atomic, update_file, XAttrs,
+        random_do_work, datetime_to_time_t, gc_directory_tree, make_dir_path)
 
 ATTR_CONTENT_TYPE = 'user.github.content-type'
 ATTR_ETAG = 'user.github.etag'
@@ -53,13 +52,10 @@ class cond_iter(object):
     the skipped attribute is set to True.'''
 
     def __init__(self, path, func, scrub=False, *args, **kwargs):
-        self._attrs = xattr.xattr(path, xattr.XATTR_NOFOLLOW)
-        try:
-            self._prev_etag = self._attrs[ATTR_ETAG]
-        except KeyError:
-            self._prev_etag = None
-        if self._prev_etag and not scrub:
-            kwargs['etag'] = self._prev_etag
+        self._attrs = XAttrs(path)
+        etag = self._attrs.get(ATTR_ETAG)
+        if etag and not scrub:
+            kwargs['etag'] = etag
         self._func = lambda: func(*args, **kwargs)
         self.skipped = None
 
@@ -67,8 +63,8 @@ class cond_iter(object):
         iter = self._func()
         for item in iter:
             yield item
-        if iter.etag and iter.etag != self._prev_etag:
-            self._attrs[ATTR_ETAG] = iter.etag
+        if iter.etag:
+            self._attrs.update(ATTR_ETAG, iter.etag)
         self.skipped = iter.last_status == 304
 
 
@@ -252,8 +248,8 @@ def update_releases(repo, root_dir, scrub=False):
             with write_atomic(asset_path) as fh:
                 asset.download(fh)
             os.utime(asset_path, (mtime, mtime))
-            attrs = xattr.xattr(asset_path)
-            attrs[ATTR_CONTENT_TYPE] = asset.content_type.encode('utf-8')
+            XAttrs(asset_path).update(ATTR_CONTENT_TYPE,
+                    asset.content_type.encode('utf-8'))
         if asset_iter.skipped:
             # Update valid_paths from existing directory
             for asset_name in os.listdir(asset_dir):

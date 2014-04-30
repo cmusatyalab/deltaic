@@ -4,13 +4,12 @@ import shutil
 import stat
 import subprocess
 import tarfile
-import xattr
 
 from ..command import make_subcommand_group
 from ..platform import lutime
 from ..source import Task, Source
-from ..util import (BloomSet, gc_directory_tree, update_file, random_do_work,
-        make_dir_path)
+from ..util import (BloomSet, gc_directory_tree, update_file, XAttrs,
+        random_do_work, make_dir_path)
 
 ATTR_INCREMENTAL = 'user.coda.incremental-ok'
 ATTR_STAT = 'user.rsync.%stat'
@@ -72,15 +71,6 @@ def build_path(root_dir, path):
         raise ValueError('Attempted directory traversal: %s' % path)
     # Call normpath again for the case where normalized == '.'
     return os.path.normpath(os.path.join(root_dir, normalized))
-
-
-def update_xattr(attrs, key, value):
-    try:
-        old_value = attrs[key]
-    except KeyError:
-        old_value = None
-    if old_value != value:
-        attrs[key] = value
 
 
 class TarMemberFile(object):
@@ -169,15 +159,14 @@ def update_dir_from_tar(tar, root_dir):
                 os.link(target_path, path)
 
         # Update metadata
-        attrs = xattr.xattr(path, xattr.XATTR_NOFOLLOW)
+        attrs = XAttrs(path)
         # owner and mode.  Hardlinks were updated with the primary, and we
         # can't set xattrs on symlinks.
         if entry.isfile() or entry.isdir():
             # rsync --fake-super compatible:
             # octal_mode_with_type major,minor uid:gid
-            update_xattr(attrs, ATTR_STAT,
-                    '%o 0,0 %d:%d' % (entry_stat_type | entry.mode,
-                    entry.uid, entry.gid))
+            attrs.update(ATTR_STAT, '%o 0,0 %d:%d' %
+                    (entry_stat_type | entry.mode, entry.uid, entry.gid))
         # mtime.  Directories will be updated later, and hardlinks were
         # updated with the primary.
         if entry.isfile() or entry.issym():
@@ -222,12 +211,11 @@ def sync_backup_volume(host, volume, root_dir, incremental=False,
     # This ensures that the first backup is a full.  Remove incremental-ok
     # attr when a full backup is requested, to ensure that full-backup
     # failures are reproducible in the next backup run.
-    root_xattrs = xattr.xattr(root_dir, xattr.XATTR_NOFOLLOW)
-    incremental_ok = ATTR_INCREMENTAL in root_xattrs
-    if incremental_ok and not incremental:
-        del root_xattrs[ATTR_INCREMENTAL]
-    elif not incremental_ok:
+    root_xattrs = XAttrs(root_dir)
+    if ATTR_INCREMENTAL not in root_xattrs:
         incremental = False
+    if not incremental:
+        root_xattrs.delete(ATTR_INCREMENTAL)
 
     _, backup_id = get_volume_ids(host, volume, verbose, volutil=volutil)
 
@@ -249,7 +237,7 @@ def sync_backup_volume(host, volume, root_dir, incremental=False,
 
     subprocess.check_call(volutil_cmd(host, 'ancient', [backup_id],
             volutil=volutil), stderr=get_err_stream(verbose))
-    update_xattr(root_xattrs, ATTR_INCREMENTAL, '')
+    root_xattrs.update(ATTR_INCREMENTAL, '')
 
 
 def get_relroot(hostname, volume):
