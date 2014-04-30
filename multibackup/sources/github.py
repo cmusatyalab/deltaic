@@ -221,11 +221,11 @@ def update_releases(repo, root_dir, scrub=False):
 
         # Metadata
         info = {
-            'created_at': release.created_at.isoformat(),
+            'created_at': timestamp_str(release.created_at),
             'description': release.body,
             'draft': release.draft,
             'name': release.name,
-            'published_at': release.published_at.isoformat(),
+            'published_at': timestamp_str(release.published_at),
             'tag_name': release.tag_name,
         }
         metadata_path = os.path.join(release_dir, 'info.json')
