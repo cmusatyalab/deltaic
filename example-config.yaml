@@ -45,8 +45,8 @@ settings:
   github-token: my_token
   # The probability that the data and metadata for a repository will be
   # revalidated
-  # [default: 0.0333]
-  github-scrub-probability: 0.0333
+  # [default: 0.0166]
+  github-scrub-probability: 0.0166
   # The path to git on the local server
   # [default: git]
   github-git-path: /usr/local/bin/git

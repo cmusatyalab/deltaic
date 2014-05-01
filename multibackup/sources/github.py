@@ -410,7 +410,7 @@ class GitHubTask(Task):
         self.args = ['github', 'backup', org]
         if repo:
             self.args.append(repo)
-        if random_do_work(settings, 'github-scrub-probability', 0.0333):
+        if random_do_work(settings, 'github-scrub-probability', 0.0166):
             self.args.append('-c')
 
 
