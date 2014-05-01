@@ -74,6 +74,113 @@ def write_atomic(path, prefix=TEMPFILE_PREFIX, suffix=''):
         raise
 
 
+class UpdateFile(object):
+    '''File-like object, only for writing, which atomically overwrites
+    the specified file only if the new data is different from the old.
+    Avoids unnecessary LVM COW.
+    
+    Any source using this class must eventually garbage-collect temporary
+    files, and must ignore them during restores.'''
+
+    def __init__(self, path, prefix=TEMPFILE_PREFIX, suffix='',
+            block_size=256 << 10):
+        self.modified = None
+        self._coroutine = self._start_coroutine(path, prefix, suffix,
+                block_size)
+        self._buf = ''
+        self._desired_size = self._coroutine.next()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        if exc_type is None:
+            self.close()
+        else:
+            self.abort()
+
+    def __del__(self):
+        self.close()
+
+    def write(self, buf):
+        self._buf += buf
+        while len(self._buf) >= self._desired_size:
+            self._send(self._desired_size)
+
+    def close(self):
+        # First send remaining buffered data, then send '' until the
+        # coroutine exits
+        while self._coroutine:
+            self._send(len(self._buf))
+
+    def abort(self):
+        # Terminate coroutine, abort new file
+        if self._coroutine:
+            self._coroutine.close()
+            self._coroutine = None
+
+    def _send(self, len):
+        assert self._coroutine
+        buf = self._buf[0:self._desired_size]
+        self._buf = self._buf[self._desired_size:]
+        try:
+            self._desired_size = self._coroutine.send(buf)
+        except StopIteration:
+            self._coroutine = None
+
+    def _start_coroutine(self, path, prefix, suffix, block_size):
+        # "buf = input_data.read(count)" is spelled "buf = yield count".
+
+        # Open old file if it exists
+        try:
+            oldfh = open(path, 'rb')
+        except IOError:
+            oldfh = None
+
+        try:
+            # Find length of common prefix
+            prefix_len = 0
+            databuf = ''
+            while oldfh:
+                oldbuf = oldfh.read(block_size)
+                if oldbuf == '':
+                    databuf = yield block_size
+                    if databuf == '':
+                        # Files are identical
+                        self.modified = False
+                        return
+                    break
+                databuf = yield len(oldbuf)
+                if oldbuf != databuf:
+                    break
+                prefix_len += len(databuf)
+
+            # Write new file
+            with write_atomic(path, prefix=prefix, suffix=suffix) as newfh:
+                # Copy common prefix
+                if oldfh:
+                    oldfh.seek(0)
+                    while prefix_len:
+                        buf = oldfh.read(min(block_size, prefix_len))
+                        newfh.write(buf)
+                        prefix_len -= len(buf)
+
+                # Copy leftover data from common-prefix search
+                newfh.write(databuf)
+
+                # Copy remaining data
+                while True:
+                    databuf = yield block_size
+                    if databuf == '':
+                        break
+                    newfh.write(databuf)
+
+            self.modified = True
+        finally:
+            if oldfh:
+                oldfh.close()
+
+
 def update_file(path, data, prefix=TEMPFILE_PREFIX, suffix='',
         block_size=256 << 10):
     # Avoid unnecessary LVM COW by only updating the file if its data has
@@ -83,56 +190,17 @@ def update_file(path, data, prefix=TEMPFILE_PREFIX, suffix='',
     # Any source using this function must eventually garbage-collect
     # temporary files, and must ignore them during restores.
 
-    if not hasattr(data, 'read'):
-        data = StringIO(data)
-
-    # Open old file if it exists
-    try:
-        oldfh = open(path, 'rb')
-    except IOError:
-        oldfh = None
-
-    try:
-        # Find length of common prefix
-        prefix_len = 0
-        databuf = ''
-        while oldfh:
-            oldbuf = oldfh.read(block_size)
-            if oldbuf == '':
-                databuf = data.read(block_size)
-                if databuf == '':
-                    # Files are identical
-                    return False
-                break
-            databuf = data.read(len(oldbuf))
-            if oldbuf != databuf:
-                break
-            prefix_len += len(databuf)
-
-        # Write new file
-        with write_atomic(path, prefix=prefix, suffix=suffix) as newfh:
-            # Copy common prefix
-            if oldfh:
-                oldfh.seek(0)
-                while prefix_len:
-                    buf = oldfh.read(min(block_size, prefix_len))
-                    newfh.write(buf)
-                    prefix_len -= len(buf)
-
-            # Copy leftover data from common-prefix search
-            newfh.write(databuf)
-
-            # Copy remaining data
+    with UpdateFile(path, prefix=prefix, suffix=suffix,
+            block_size=block_size) as fh:
+        if hasattr(data, 'read'):
             while True:
-                databuf = data.read(block_size)
-                if databuf == '':
+                buf = data.read(block_size)
+                if buf == '':
                     break
-                newfh.write(databuf)
-
-        return True
-    finally:
-        if oldfh:
-            oldfh.close()
+                fh.write(buf)
+        else:
+            fh.write(data)
+    return fh.modified
 
 
 def _test_update_file():
@@ -196,6 +264,35 @@ def _test_update_file():
         ndata = change_byte(data, 1234567)
         assert update_file(path, StringIO(ndata))
         check(ndata)
+
+        # Streaming writes
+        init(data)
+        ndata = data + 'asdfghjkl'
+        with UpdateFile(path) as fh:
+            for i in range(0, len(ndata), 384 << 10):
+                fh.write(ndata[i:i + (384 << 10)])
+        assert fh.modified
+        check(ndata)
+
+        # Streaming writes with failure
+        init(data)
+        ndata = 'q' + data[:300000]
+        try:
+            with UpdateFile(path) as fh:
+                fh.write(ndata)
+                raise ValueError
+        except ValueError:
+            pass
+        assert fh.modified is None
+        check(data)
+
+        # Streaming writes, no change
+        init(data)
+        with UpdateFile(path) as fh:
+            fh.write(data)
+        assert fh.modified is False
+        check(data)
+
     finally:
         try:
             os.unlink(path)
