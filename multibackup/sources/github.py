@@ -121,17 +121,23 @@ def update_issues(repo, root_dir, scrub=False):
                 continue
         except OSError:
             pass
+
+        if issue.comments:
+            comments = [{
+                    'created_at': timestamp_str(comment.created_at),
+                    'updated_at': timestamp_str(comment.updated_at),
+                    'user': user_str(comment.user),
+                    'body': comment.body,
+                } for comment in issue.iter_comments()]
+        else:
+            comments = []
+
         info = {
             'assignee': user_str(issue.assignee),
             'body': issue.body,
             'closed_at': timestamp_str(issue.closed_at),
             'closed_by': user_str(issue.closed_by),
-            'comments': [{
-                    'created_at': timestamp_str(comment.created_at),
-                    'updated_at': timestamp_str(comment.updated_at),
-                    'user': user_str(comment.user),
-                    'body': comment.body,
-                } for comment in issue.iter_comments()],
+            'comments': comments,
             'created_at': timestamp_str(issue.created_at),
             'events': [{
                     'actor': user_str(event.actor),
