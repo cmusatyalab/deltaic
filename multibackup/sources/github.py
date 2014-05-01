@@ -11,7 +11,7 @@ import yaml
 
 from ..command import make_subcommand_group, get_cmdline_for_subcommand
 from ..source import Task, Source
-from ..util import (BloomSet, write_atomic, update_file, XAttrs,
+from ..util import (BloomSet, UpdateFile, update_file, XAttrs,
         random_do_work, datetime_to_time_t, gc_directory_tree, make_dir_path)
 
 ATTR_CONTENT_TYPE = 'user.github.content-type'
@@ -239,15 +239,18 @@ def update_releases(repo, root_dir, scrub=False):
 
             try:
                 st = os.stat(asset_path)
-                if st.st_mtime == mtime and st.st_size == asset.size:
+                if (not scrub and st.st_mtime == mtime and
+                        st.st_size == asset.size):
                     continue
             except OSError:
                 pass
 
-            print os.path.relpath(asset_path, root_dir)
-            with write_atomic(asset_path) as fh:
+            with UpdateFile(asset_path) as fh:
                 asset.download(fh)
-            os.utime(asset_path, (mtime, mtime))
+            if fh.modified:
+                print 'f', asset_path
+            if os.stat(asset_path).st_mtime != mtime:
+                os.utime(asset_path, (mtime, mtime))
             XAttrs(asset_path).update(ATTR_CONTENT_TYPE,
                     asset.content_type.encode('utf-8'))
         if asset_iter.skipped:
