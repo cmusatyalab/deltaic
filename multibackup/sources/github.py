@@ -1,4 +1,3 @@
-from datetime import datetime
 from getpass import getpass
 import github3
 import json
@@ -202,7 +201,7 @@ def update_comments(repo, root_dir, scrub=False):
         commit_id = comment.commit_id
         commit_comments.setdefault(commit_id, []).append(info)
         commit_timestamps[commit_id] = max(comment.updated_at,
-                commit_timestamps.get(commit_id, datetime.fromtimestamp(0)))
+                commit_timestamps.get(commit_id, comment.updated_at))
     if not comment_iter.skipped:
         for commit_id in commit_comments:
             path = os.path.join(comment_dir, '%s.json' % commit_id)
