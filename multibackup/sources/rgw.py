@@ -11,7 +11,7 @@ import xml.etree.cElementTree as ET
 
 from ..command import make_subcommand_group
 from ..source import Task, Source
-from ..util import (BloomSet, update_file, write_atomic, random_do_work,
+from ..util import (BloomSet, UpdateFile, update_file, random_do_work,
         datetime_to_time_t, make_dir_path)
 
 KEY_METADATA_ATTRS = {
@@ -33,6 +33,10 @@ KEY_UPLOAD_HEADERS = set([
 ])
 
 S3_NAMESPACE = 'http://s3.amazonaws.com/doc/2006-03-01/'
+
+SCRUB_NONE = 0
+SCRUB_ACLS = 1
+SCRUB_ALL = 2
 
 def radosgw_admin(*args):
     proc = subprocess.Popen(['radosgw-admin', '--format=json'] +
@@ -121,10 +125,10 @@ def enumerate_keys_from_directory(root_dir):
 
 
 def sync_pool_init(root_dir_, server, bucket_name, access_key, secret_key,
-        secure, force_acls_):
-    global root_dir, download_bucket, force_acls
+        secure, scrub_):
+    global root_dir, download_bucket, scrub
     root_dir = root_dir_
-    force_acls = force_acls_
+    scrub = scrub_
     conn = connect(server, access_key, secret_key, secure=secure)
     download_bucket = conn.get_bucket(bucket_name)
 
@@ -139,20 +143,23 @@ def sync_key(args):
 
     try:
         st = os.stat(out_data)
-        need_update = st.st_size != key_size or st.st_mtime != key_time
+        update_data = (scrub == SCRUB_ALL or st.st_size != key_size or
+                st.st_mtime != key_time)
     except OSError:
-        need_update = True
+        update_data = True
 
-    if not need_update and not force_acls:
+    if not update_data and scrub == SCRUB_NONE:
         return (None, None)
 
     make_dir_path(out_dir)
 
     key = download_bucket.new_key(key_name)
+    updated = False
     try:
-        if need_update:
-            with write_atomic(out_data, suffix='_t') as fh:
+        if update_data:
+            with UpdateFile(out_data, suffix='_t') as fh:
                 key.get_contents_to_file(fh)
+            updated |= fh.modified
             metadata = {
                 'metadata': key.metadata,
             }
@@ -160,15 +167,16 @@ def sync_key(args):
                 value = getattr(key, attr, None)
                 if value:
                     metadata[name] = value
-            update_file(out_meta, json.dumps(metadata, sort_keys=True),
-                    suffix='_t')
-        updated_acl = update_file(out_acl, key.get_xml_acl(), suffix='_t')
-        if need_update:
-            os.utime(out_data, (key_time, key_time))
-            os.utime(out_meta, (key_time, key_time))
+            updated |= update_file(out_meta, json.dumps(metadata,
+                    sort_keys=True), suffix='_t')
+        updated |= update_file(out_acl, key.get_xml_acl(), suffix='_t')
+        if update_data:
+            for path in out_data, out_meta:
+                if os.stat(path).st_mtime != key_time:
+                    os.utime(path, (key_time, key_time))
             # Don't utimes out_acl, since the Last-Modified time doesn't
             # apply to it
-        if need_update or updated_acl:
+        if updated:
             return (key_name, None)
         else:
             return (None, None)
@@ -183,7 +191,7 @@ def sync_key(args):
         return (key_name, "Couldn't fetch %s: %s" % (key_name, e))
 
 
-def sync_bucket(server, bucket_name, root_dir, workers, force_acls, secure):
+def sync_bucket(server, bucket_name, root_dir, workers, scrub, secure):
     warned = set()
     def warn(msg, *args):
         print >>sys.stderr, msg % args
@@ -200,7 +208,7 @@ def sync_bucket(server, bucket_name, root_dir, workers, force_acls, secure):
     # Keys
     start_time = time.time()
     pool = Pool(workers, sync_pool_init, [root_dir, server, bucket_name,
-            access_key, secret_key, secure, force_acls])
+            access_key, secret_key, secure, scrub])
     iter, key_set = enumerate_keys(bucket)
     for path, error in pool.imap_unordered(sync_key, iter):
         if error:
@@ -339,8 +347,14 @@ def cmd_rgw_backup(config, args):
     server = settings['rgw-server']
     secure = settings.get('rgw-secure', False)
     workers = settings.get('rgw-threads', 4)
+    if args.scrub:
+        scrub = SCRUB_ALL
+    elif args.scrub_acls:
+        scrub = SCRUB_ACLS
+    else:
+        scrub = SCRUB_NONE
     if not sync_bucket(server, args.bucket, root_dir, workers=workers,
-            force_acls=args.force_acls, secure=secure):
+            scrub=scrub, secure=secure):
         return 1
 
 
@@ -366,8 +380,10 @@ def _setup():
     parser.set_defaults(func=cmd_rgw_backup)
     parser.add_argument('bucket',
             help='bucket name')
-    parser.add_argument('-A', '--force-acls', action='store_true',
+    parser.add_argument('-A', '--scrub-acls', action='store_true',
             help='update ACLs for unmodified keys')
+    parser.add_argument('-c', '--scrub', action='store_true',
+            help='check backup data against original')
 
     parser = group.add_parser('restore',
             help='restore radosgw bucket')
@@ -387,8 +403,10 @@ class BucketTask(Task):
         Task.__init__(self, settings)
         self.root = get_relroot(name)
         self.args = ['rgw', 'backup', name]
-        if random_do_work(settings, 'rgw-force-acl-probability', 0.0166):
+        if random_do_work(settings, 'rgw-scrub-acl-probability', 0):
             self.args.append('-A')
+        if random_do_work(settings, 'rgw-scrub-probability', 0.0166):
+            self.args.append('-c')
 
 
 class RGWSource(Source):

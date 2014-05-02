@@ -66,10 +66,14 @@ settings:
   # Whether to connect to radosgw over SSL
   # [default: false]
   rgw-secure: false
-  # The probability that object ACLs will be unconditionally fetched for a
-  # bucket, even for objects that have not changed
+  # The probability that object ACLs will be unconditionally refreshed for
+  # a bucket, even for objects that have not changed
+  # [default: 0]
+  rgw-scrub-acl-probability: 0.01
+  # The probability that a bucket will be revalidated by comparing backup
+  # data and metadata to the original
   # [default: 0.0166]
-  rgw-force-acl-probability: 0.01
+  rgw-scrub-probability: 0.01
   # Number of fetch threads per backup job
   # [default: 4]
   rgw-threads: 4
