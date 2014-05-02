@@ -64,6 +64,12 @@ def delete_snapshot(pool, image, snapshot):
     rbd_exec(pool, 'snap', 'rm', '-i', image, '--snap', snapshot)
 
 
+def create_or_open(path):
+    # Open a file R/W, creating it if necessary but not truncating it.
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0666)
+    return os.fdopen(fd, 'r+b')
+
+
 def try_unlink(path):
     try:
         os.unlink(path)
@@ -90,46 +96,44 @@ def read_items(fh, fmt):
         return items
 
 
-def unpack_diff_to_file(ifh, path):
-    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0666)
+def unpack_diff(ifh, ofh):
     total_size = 0
     total_changed = 0
-    with os.fdopen(fd, 'r+b') as ofh:
-        # Read header
-        buf = ifh.read(len(DIFF_MAGIC))
-        if buf != DIFF_MAGIC:
-            raise IOError('Missing diff magic string')
-        # Read each record
-        while True:
-            type = read_items(ifh, 'c')
-            if type in ('f', 't'):
-                # Source/dest snapshot name => ignore
-                size = read_items(ifh, '<I')
-                ifh.read(size)
-            elif type == 's':
-                # Image size
-                total_size = read_items(ifh, '<Q')
-                ofh.truncate(total_size)
-            elif type == 'w':
-                # Data
-                offset, length = read_items(ifh, '<QQ')
-                total_changed += length
-                ofh.seek(offset)
-                while length > 0:
-                    buf = ifh.read(min(length, BLOCKSIZE))
-                    ofh.write(buf)
-                    length -= len(buf)
-            elif type == 'z':
-                # Zero data
-                offset, length = read_items(ifh, '<QQ')
-                total_changed += length
-                punch(ofh, offset, length)
-            elif type == 'e':
-                if ifh.read(1) != '':
-                    raise IOError("Expected EOF, didn't find it")
-                break
-            else:
-                raise ValueError('Unknown record type: %s' % type)
+    # Read header
+    buf = ifh.read(len(DIFF_MAGIC))
+    if buf != DIFF_MAGIC:
+        raise IOError('Missing diff magic string')
+    # Read each record
+    while True:
+        type = read_items(ifh, 'c')
+        if type in ('f', 't'):
+            # Source/dest snapshot name => ignore
+            size = read_items(ifh, '<I')
+            ifh.read(size)
+        elif type == 's':
+            # Image size
+            total_size = read_items(ifh, '<Q')
+            ofh.truncate(total_size)
+        elif type == 'w':
+            # Data
+            offset, length = read_items(ifh, '<QQ')
+            total_changed += length
+            ofh.seek(offset)
+            while length > 0:
+                buf = ifh.read(min(length, BLOCKSIZE))
+                ofh.write(buf)
+                length -= len(buf)
+        elif type == 'z':
+            # Zero data
+            offset, length = read_items(ifh, '<QQ')
+            total_changed += length
+            punch(ofh, offset, length)
+        elif type == 'e':
+            if ifh.read(1) != '':
+                raise IOError("Expected EOF, didn't find it")
+            break
+        else:
+            raise ValueError('Unknown record type: %s' % type)
     print '%d bytes written, %d total' % (total_changed, total_size)
 
 
@@ -138,7 +142,8 @@ def fetch_snapshot(pool, image, snapshot, path):
         os.unlink(path)
     proc = export_diff(pool, image, snapshot)
     try:
-        unpack_diff_to_file(proc.stdout, path)
+        with create_or_open(path) as ofh:
+            unpack_diff(proc.stdout, ofh)
         if proc.wait():
             raise IOError('Export returned %d' % proc.returncode)
         XAttrs(path).update(ATTR_SNAPSHOT, snapshot)
@@ -188,8 +193,9 @@ def apply_patch_and_rebase(pool, image, path):
         # Nothing to do
         try_unlink(pending_path)
         return
-    with open(pending_path, 'rb') as fh:
-        unpack_diff_to_file(fh, path)
+    with open(pending_path, 'rb') as ifh:
+        with create_or_open(path) as ofh:
+            unpack_diff(ifh, ofh)
     delete_snapshot(pool, image, old_snapshot)
     attrs.update(ATTR_SNAPSHOT, new_snapshot)
     attrs.delete(ATTR_PENDING_SNAPSHOT)
