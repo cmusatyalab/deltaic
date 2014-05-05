@@ -31,6 +31,8 @@ _FALLOC_FL_PUNCH_HOLE = 2
 
 
 def punch(fh, offset, length):
-    if _fallocate(fh.fileno(), _FALLOC_FL_PUNCH_HOLE | _FALLOC_FL_KEEP_SIZE,
+    if hasattr(fh, 'punch'):
+        fh.punch(offset, length)
+    elif _fallocate(fh.fileno(), _FALLOC_FL_PUNCH_HOLE | _FALLOC_FL_KEEP_SIZE,
             offset, length):
         raise OSError('fallocate() failed: %s' % os.strerror(get_errno()))

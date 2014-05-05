@@ -8,7 +8,7 @@ import uuid
 from ..command import make_subcommand_group
 from ..platform import punch
 from ..source import Task, Source
-from ..util import XAttrs, make_dir_path
+from ..util import XAttrs, make_dir_path, random_do_work
 
 BLOCKSIZE = 256 << 10
 DIFF_MAGIC = 'rbd diff v1\n'
@@ -77,6 +77,68 @@ def try_unlink(path):
         pass
 
 
+class ComparingFile(object):
+    """A writable file-like object.  It doesn't actually write anything, but
+    instead compares its input to the file data at the specified path.
+    If we find a mismatch, we could fix it in-place in the original file,
+    but that would allow bugs in this class to produce silent data
+    corruption some weeks after an image or snapshot is first backed up.
+    Instead, we just complain by raising ValueError."""
+
+    def __init__(self, path):
+        self._fh = open(path, 'rb')
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        self.close()
+
+    def write(self, buf):
+        start = 0
+        while start < len(buf):
+            disk_buf = self._fh.read(min(BLOCKSIZE, len(buf) - start))
+            count = len(disk_buf)
+            if disk_buf == '':
+                raise ValueError("Unexpected EOF at %d" % self._fh.tell())
+            if disk_buf != buf[start:start + count]:
+                raise ValueError("Data mismatch at %d" %
+                        (self._fh.tell() - count))
+            start += count
+
+    def seek(self, offset, whence=0):
+        self._fh.seek(offset, whence)
+
+    def tell(self):
+        return self._fh.tell()
+        
+    def truncate(self, len):
+        old_off = self._fh.tell()
+        try:
+            self._fh.seek(0, 2)
+            if len != self._fh.tell():
+                raise ValueError('Expected file length %d, found %d' %
+                        (len, self._fh.tell()))
+        finally:
+            self._fh.seek(old_off)
+
+    def punch(self, offset, length):
+        # multibackup.platform.punch will call this.
+        old_off = self._fh.tell()
+        try:
+            self._fh.seek(offset)
+            buf = '\0' * BLOCKSIZE
+            while length > 0:
+                count = min(BLOCKSIZE, length)
+                self.write(buf[:count])
+                length -= count
+        finally:
+            self._fh.seek(old_off)
+
+    def close(self):
+        self._fh.close()
+
+
 def export_diff(pool, image, snapshot, basis=None, fh=subprocess.PIPE):
     cmd = ['rbd', 'export-diff', '--no-progress', '-p', pool, image,
             '--snap', snapshot, '-']
@@ -96,7 +158,7 @@ def read_items(fh, fmt):
         return items
 
 
-def unpack_diff(ifh, ofh):
+def unpack_diff(ifh, ofh, verbose=True):
     total_size = 0
     total_changed = 0
     # Read header
@@ -134,7 +196,8 @@ def unpack_diff(ifh, ofh):
             break
         else:
             raise ValueError('Unknown record type: %s' % type)
-    print '%d bytes written, %d total' % (total_changed, total_size)
+    if verbose:
+        print '%d bytes written, %d total' % (total_changed, total_size)
 
 
 def fetch_snapshot(pool, image, snapshot, path):
@@ -150,6 +213,14 @@ def fetch_snapshot(pool, image, snapshot, path):
     except Exception:
         os.unlink(path)
         raise
+
+
+def scrub_snapshot(pool, image, snapshot, path):
+    proc = export_diff(pool, image, snapshot)
+    with ComparingFile(path) as ofh:
+        unpack_diff(proc.stdout, ofh, verbose=False)
+    if proc.wait():
+        raise IOError('Export returned %d' % proc.returncode)
 
 
 def fetch_image(pool, image, path):
@@ -273,8 +344,14 @@ def cmd_rbd_backup(config, args):
     basedir = make_dir_path(os.path.dirname(out_path))
     if args.snapshot:
         backup_snapshot(args.pool, object_name, out_path)
+        if args.scrub:
+            image = get_image_for_snapshot(args.pool, object_name)
+            scrub_snapshot(args.pool, image, object_name, out_path)
     else:
         backup_image(args.pool, object_name, out_path)
+        if args.scrub:
+            snapshot = XAttrs(out_path)[ATTR_SNAPSHOT]
+            scrub_snapshot(args.pool, object_name, snapshot, out_path)
 
 
 def cmd_rbd_drop(config, args):
@@ -295,6 +372,8 @@ def _setup():
             help='pool name')
     parser.add_argument('friendly_name', metavar='config-name',
             help='config name for image or snapshot')
+    parser.add_argument('-c', '--scrub', action='store_true',
+            help='check backup data against original')
     parser.add_argument('-s', '--snapshot', action='store_true',
             help='requested object is a snapshot')
 
@@ -314,6 +393,8 @@ class ImageTask(Task):
         Task.__init__(self, settings)
         self.root = get_relroot(pool, friendly_name)
         self.args = ['rbd', 'backup', pool, friendly_name]
+        if random_do_work(settings, 'rbd-scrub-probability', 0.0166):
+            self.args.append('-c')
 
 
 class SnapshotTask(ImageTask):

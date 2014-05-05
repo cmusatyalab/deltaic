@@ -55,6 +55,10 @@ settings:
   github-workers: 2
 
   ## rbd source
+  # The probability that a backup will be validated by comparing its data
+  # to the original
+  # [default: 0.0166]
+  rbd-scrub-probability: 0.0166
   # Number of simultaneous backup jobs
   # [default: 1]
   rbd-workers: 2
