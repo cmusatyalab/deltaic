@@ -234,10 +234,9 @@ def update_releases(repo, root_dir, scrub=False):
         valid_paths.add(metadata_path)
 
         # Assets
-        asset_dir = make_dir_path(release_dir, 'assets')
-        valid_paths.add(asset_dir)
-        asset_iter = cond_iter(asset_dir, release.iter_assets, scrub=scrub)
-        for asset in asset_iter:
+        asset_dir = os.path.join(release_dir, 'assets')
+        for asset in release.assets:
+            make_dir_path(asset_dir)
             asset_path = os.path.join(asset_dir, asset.name)
             mtime = datetime_to_time_t(asset.updated_at)
             valid_paths.add(asset_path)
@@ -258,10 +257,6 @@ def update_releases(repo, root_dir, scrub=False):
                 os.utime(asset_path, (mtime, mtime))
             XAttrs(asset_path).update(ATTR_CONTENT_TYPE,
                     asset.content_type.encode('utf-8'))
-        if asset_iter.skipped:
-            # Update valid_paths from existing directory
-            for asset_name in os.listdir(asset_dir):
-                valid_paths.add(os.path.join(asset_dir, asset_name))
 
     # Collect garbage, if anything has changed
     if not release_iter.skipped:

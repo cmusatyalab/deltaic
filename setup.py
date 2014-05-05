@@ -15,7 +15,7 @@ setup(
     install_requires=[
         'argparse',
         'boto',
-        'github3.py', # > 0.8.2
+        'github3.py >= 0.9.0',
         'pybloom', # >= 2.0
         'python-dateutil',
         'PyYAML',
