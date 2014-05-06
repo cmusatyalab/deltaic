@@ -67,10 +67,12 @@ class cond_iter(object):
         self.skipped = iter.last_status == 304
 
 
-def update_git(url, root_dir, token, scrub=False, git_path=None):
+def update_git(url, root_dir, token, scrub=False, ignore_clone_errors=False,
+        git_path=None):
     if git_path is None:
         git_path = 'git'
-    if not os.path.exists(root_dir):
+    exists = os.path.exists(root_dir)
+    if not exists:
         cmd = [git_path, 'clone', '--mirror', url, root_dir]
         cwd = None
     else:
@@ -92,6 +94,8 @@ def update_git(url, root_dir, token, scrub=False, git_path=None):
             subprocess.check_call(cmd, cwd=cwd, env=env)
             break
         except subprocess.CalledProcessError:
+            if ignore_clone_errors and not exists:
+                return
             if not tries_remaining:
                 raise
         time.sleep(1)
@@ -280,9 +284,11 @@ def sync_repo(repo, root_dir, token, scrub=False, git_path=None):
     update_git(repo.clone_url, os.path.join(root_dir, 'repo'), token,
             scrub=scrub, git_path=git_path)
     if repo.has_wiki:
+        # The wiki repo doesn't necessarily exist, even though the API
+        # claims it does.  Ignore errors during initial clone.
         update_git(re.sub('\.git$', '.wiki', repo.clone_url),
                 os.path.join(root_dir, 'wiki'), token, scrub=scrub,
-                git_path=git_path)
+                ignore_clone_errors=True, git_path=git_path)
 
     # Issues
     if repo.has_issues:
