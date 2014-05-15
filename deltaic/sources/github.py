@@ -17,9 +17,9 @@ ATTR_CONTENT_TYPE = 'user.github.content-type'
 ATTR_ETAG = 'user.github.etag'
 GIT_ATTEMPTS = 5
 OAUTH_SCOPES = ('read:org', 'repo')
-TOKEN_NOTE = 'multibackup github source'
-TOKEN_NOTE_URL = 'https://github.com/cmusatyalab/multibackup'
-USER_AGENT = 'multibackup-github/1'
+TOKEN_NOTE = 'Deltaic GitHub source'
+TOKEN_NOTE_URL = 'https://github.com/cmusatyalab/deltaic'
+USER_AGENT = 'deltaic-github/1'
 
 def user_str(user):
     return user.login if user else None
@@ -84,8 +84,8 @@ def update_git(url, root_dir, token, scrub=False, ignore_clone_errors=False,
     env = dict(os.environ)
     env.update({
         'GIT_ASKPASS': askpass,
-        'MB_ASKPASS_USER': token,
-        'MB_ASKPASS_PASS': '',
+        'DT_ASKPASS_USER': token,
+        'DT_ASKPASS_PASS': '',
     })
 
     for tries_remaining in range(GIT_ATTEMPTS - 1, -1, -1):

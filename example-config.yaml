@@ -6,8 +6,8 @@ settings:
   # The logical volume path (vg/lv) corresponding to the backup root
   # [required]
   backup-lv: backups/current
-  # The minimum free percentage of a resource, below which
-  # "multibackup df -c" will complain
+  # The minimum free percentage of a resource, below which "deltaic df -c"
+  # will complain
   # [default: 5]
   df-warning: 10
 
@@ -40,7 +40,7 @@ settings:
   coda-workers: 2
 
   ## github source
-  # OAuth token obtained from "multibackup github auth"
+  # OAuth token obtained from "deltaic github auth"
   # [required]
   github-token: my_token
   # The probability that the data and metadata for a repository will be

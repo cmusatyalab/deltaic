@@ -5,9 +5,9 @@ import os
 
 def askpass(prompt):
     if 'Username' in prompt:
-        print os.environ['MB_ASKPASS_USER']
+        print os.environ['DT_ASKPASS_USER']
     elif 'Password' in prompt:
-        print os.environ['MB_ASKPASS_PASS']
+        print os.environ['DT_ASKPASS_PASS']
     else:
         raise ValueError('Unrecognized prompt: %s' % prompt)
 

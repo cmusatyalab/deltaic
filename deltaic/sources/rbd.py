@@ -123,7 +123,7 @@ class ComparingFile(object):
             self._fh.seek(old_off)
 
     def punch(self, offset, length):
-        # multibackup.platform.punch will call this.
+        # deltaic.platform.punch will call this.
         old_off = self._fh.tell()
         try:
             self._fh.seek(offset)

@@ -1,16 +1,16 @@
 from setuptools import setup
 
 setup(
-    name='multibackup',
+    name='deltaic',
     packages=[
-        'multibackup',
-        'multibackup.sources',
+        'deltaic',
+        'deltaic.sources',
     ],
     scripts=[
-        'bin/mb-askpass',
-        'bin/multibackup',
+        'bin/deltaic',
+        'bin/dt-askpass',
     ],
-    description='Simple multi-source backup system using LVM snapshots',
+    description='Efficient backup system supporting multiple data sources',
     license='GNU General Public License, version 2',
     install_requires=[
         'argparse',
