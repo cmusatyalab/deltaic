@@ -17,6 +17,7 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+import argparse
 import os
 import re
 import subprocess
@@ -47,7 +48,23 @@ def run_rsync(cmd):
     return proc.wait()
 
 
-def sync_host(host, root_dir, mounts, exclude=(), scrub=False, rsync=None):
+def run_rsync_with_fallback(cmd):
+    cmd = list(cmd)
+    ret = run_rsync(cmd)
+    if ret in (2, 10):
+        # Try falling back to protocol 30 to work around failures when one
+        # rsync is 3.1.0 and the other is >= 3.1.1
+        ret = run_rsync(cmd + ['--protocol=30'])
+    if ret == 2:
+        # Drop features that require protocol >= 30
+        cmd.remove('--acls')
+        cmd.remove('--xattrs')
+        ret = run_rsync(cmd)
+    if ret not in (0, 24):
+        raise IOError('rsync failed with code %d' % ret)
+
+
+def backup_host(host, root_dir, mounts, exclude=(), scrub=False, rsync=None):
     if rsync is None:
         rsync = 'rsync'
     args = [rsync, '-aHRxi', '--acls', '--xattrs', '--fake-super', '--delete',
@@ -59,20 +76,21 @@ def sync_host(host, root_dir, mounts, exclude=(), scrub=False, rsync=None):
     args.append(root_dir.rstrip('/'))
     if scrub:
         args.append('--checksum')
+    run_rsync_with_fallback(args)
 
-    ret = run_rsync(args)
-    if ret in (2, 10):
-        # Try falling back to protocol 30 to work around failures when one
-        # rsync is 3.1.0 and the other is >= 3.1.1
-        ret = run_rsync(args + ['--protocol=30'])
-    if ret == 2:
-        # Drop features that require protocol >= 30
-        args.remove('--acls')
-        args.remove('--xattrs')
-        ret = run_rsync(args)
 
-    if ret not in (0, 24):
-        raise IOError('rsync failed with code %d' % ret)
+def restore_host(source, dest_host, dest_dir, extra_args=None, rsync=None):
+    if rsync is None:
+        rsync = 'rsync'
+    source = source.rstrip('/')
+    if os.path.isdir(source):
+        source += '/'
+    args = [rsync, '-aHi', '--acls', '--xattrs', '--fake-super',
+            '--numeric-ids', source,
+            'root@%s:%s/' % (dest_host, dest_dir.rstrip('/'))]
+    if extra_args:
+        args.extend(extra_args)
+    run_rsync_with_fallback(args)
 
 
 def get_relroot(hostname, info):
@@ -90,10 +108,17 @@ def cmd_rsync_backup(config, args):
 
     if 'pre' in info:
         remote_command(args.host, info['pre'])
-    sync_host(args.host, root_dir, info['mounts'], exclude, scrub=args.scrub,
-            rsync=rsync)
+    backup_host(args.host, root_dir, info['mounts'], exclude,
+            scrub=args.scrub, rsync=rsync)
     if 'post' in info:
         remote_command(args.host, info['post'])
+
+
+def cmd_rsync_restore(config, args):
+    settings = config['settings']
+    rsync = settings.get('rsync-local-binary')
+    restore_host(args.source, args.host, args.destdir, extra_args=args.args,
+            rsync=rsync)
 
 
 def _setup():
@@ -107,6 +132,18 @@ def _setup():
             help='host to back up')
     parser.add_argument('-c', '--scrub', action='store_true',
             help='check backup data against original')
+
+    parser = group.add_parser('restore',
+            help='restore file or directory tree to host filesystem')
+    parser.set_defaults(func=cmd_rsync_restore)
+    parser.add_argument('source', metavar='source-path',
+            help='file or directory to restore')
+    parser.add_argument('host',
+            help='destination host')
+    parser.add_argument('destdir', metavar='dest-dir',
+            help='destination directory')
+    parser.add_argument('args', metavar='...', nargs=argparse.REMAINDER,
+            help='additional arguments for rsync')
 
 _setup()
 
