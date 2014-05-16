@@ -333,6 +333,19 @@ def backup_snapshot(pool, snapshot, path):
     attrs.update(ATTR_SNAPID, str(snapid))
 
 
+def restore_image(path, pool, image):
+    if XAttrs(path).get(ATTR_PENDING_SNAPSHOT):
+        # Should only happen if unpack_diff() failed during the backup,
+        # which likely means we didn't understand something about the diff
+        # format.  Properly restoring the backup would require unpacking the
+        # pending diff onto it first.  In order to do that, we'd need to
+        # copy the backup somewhere else first (probably while preserving
+        # sparseness), since we may be restoring from a read-only LVM
+        # snapshot.
+        raise ValueError('Backup image has partially-applied diff')
+    rbd_exec(pool, 'import', path, image)
+
+
 def drop_image_snapshots(pool, path):
     if not os.path.exists(path):
         return
@@ -373,6 +386,10 @@ def cmd_rbd_backup(config, args):
             scrub_snapshot(args.pool, object_name, snapshot, out_path)
 
 
+def cmd_rbd_restore(config, args):
+    restore_image(args.path, args.pool, args.image)
+
+
 def cmd_rbd_drop(config, args):
     settings = config['settings']
     out_path = os.path.join(settings['root'],
@@ -395,6 +412,16 @@ def _setup():
             help='check backup data against original')
     parser.add_argument('-s', '--snapshot', action='store_true',
             help='requested object is a snapshot')
+
+    parser = group.add_parser('restore',
+            help='restore backup to a new RBD image')
+    parser.set_defaults(func=cmd_rbd_restore)
+    parser.add_argument('path',
+            help='path to image or snapshot file')
+    parser.add_argument('pool',
+            help='destination pool name')
+    parser.add_argument('image',
+            help='destination image name')
 
     parser = group.add_parser('drop',
             help='remove RBD snapshots for image backup')
