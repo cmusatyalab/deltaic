@@ -43,5 +43,15 @@ setup(
     dependency_links=[
         'git+https://github.com/jaybaird/python-bloomfilter@v2.0#egg=pybloom',
     ],
+    classifiers=[
+        'Development Status :: 4 - Beta',
+        'Environment :: No Input/Output (Daemon)',
+        'Intended Audience :: System Administrators',
+        'License :: OSI Approved :: GNU General Public License v2 (GPLv2)',
+        'Operating System :: POSIX :: Linux',
+        'Programming Language :: Python :: 2.6',
+        'Programming Language :: Python :: 2.7',
+        'Topic :: System :: Archiving :: Backup',
+    ],
     zip_safe=True,
 )
