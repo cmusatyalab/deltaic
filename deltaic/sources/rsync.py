@@ -79,16 +79,26 @@ def backup_host(host, root_dir, mounts, exclude=(), scrub=False, rsync=None):
     run_rsync_with_fallback(args)
 
 
-def restore_host(source, dest_host, dest_dir, extra_args=None, rsync=None):
+def restore_host(source, dest_host, dest_dir, coda=False, user=None,
+        extra_args=None, rsync=None):
     if rsync is None:
         rsync = 'rsync'
+    if user is None:
+        user = 'root'
     source = source.rstrip('/')
     if os.path.isdir(source):
         source += '/'
-    # Complain if remote super-user activities (-ogD) fail
-    args = [rsync, '-aHi', '--acls', '--xattrs', '--fake-super', '-M--super',
-            '--numeric-ids', source,
-            'root@%s:%s/' % (dest_host, dest_dir.rstrip('/'))]
+    dest = '%s@%s:%s/' % (user, dest_host, dest_dir.rstrip('/'))
+
+    if not coda:
+        # Complain if remote superuser activities (-ogD) fail
+        args = [rsync, '-aHi', '--acls', '--xattrs', '--fake-super',
+                '-M--super', '--numeric-ids', source, dest]
+    else:
+        # Coda.  No -AXDg, and force -o even though we're likely not
+        # superuser.
+        args = [rsync, '-rlptoHi', '--fake-super', '-M--super',
+                '--numeric-ids', source, dest]
     if extra_args:
         args.extend(extra_args)
     run_rsync_with_fallback(args)
@@ -118,8 +128,8 @@ def cmd_rsync_backup(config, args):
 def cmd_rsync_restore(config, args):
     settings = config['settings']
     rsync = settings.get('rsync-local-binary')
-    restore_host(args.source, args.host, args.destdir, extra_args=args.args,
-            rsync=rsync)
+    restore_host(args.source, args.host, args.destdir, coda=args.coda,
+            user=args.user, extra_args=args.args, rsync=rsync)
 
 
 def _setup():
@@ -143,6 +153,10 @@ def _setup():
             help='destination host')
     parser.add_argument('destdir', metavar='dest-dir',
             help='destination directory')
+    parser.add_argument('--coda', action='store_true',
+            help='use options suitable for restoring a Coda volume')
+    parser.add_argument('-u', '--user',
+            help='username on destination host [default: root]')
     parser.add_argument('args', metavar='...', nargs=argparse.REMAINDER,
             help='additional arguments for rsync')
 
