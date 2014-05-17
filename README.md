@@ -23,7 +23,7 @@ version 2](COPYING).
 ## Requirements
 
 *   Python 2.6 or 2.7 and virtualenv
-*   An LVM thin pool (see `lvmthin(7)`) to store the backup filesystem and
+*   An LVM thin pool (see **lvmthin**(7)) to store the backup filesystem and
     associated snapshots.
 *   A backup filesystem with extended-attribute support (the `user_xattr`
     mount option for ext4) and discard support (`discard` for ext4). 
@@ -92,7 +92,7 @@ sources have additional requirements; see below.
 ### `coda`: The Coda distributed filesystem
 
 `coda` backs up individual replicas of Coda volumes by connecting to a
-Coda server via `ssh` and running `volutil dump` and `codadump2tar`.
+Coda server via SSH and running `volutil dump` and `codadump2tar`.
 File/directory UIDs and mode bits are stored as rsync-compatible extended
 attributes.  ACLs are not stored.
 
@@ -193,7 +193,7 @@ for all objects.
 
 Use `deltaic rgw restore` to restore a bucket.  The bucket owner, and all
 users mentioned in the bucket and object ACLs, must already exist in
-`radosgw`.  `Last-Modified` and `ETag` headers are not restored, since the
+radosgw.  Last-Modified and ETag headers are not restored, since the
 S3 API does not permit it.
 
 
