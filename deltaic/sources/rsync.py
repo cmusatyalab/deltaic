@@ -85,7 +85,8 @@ def restore_host(source, dest_host, dest_dir, extra_args=None, rsync=None):
     source = source.rstrip('/')
     if os.path.isdir(source):
         source += '/'
-    args = [rsync, '-aHi', '--acls', '--xattrs', '--fake-super',
+    # Complain if remote super-user activities (-ogD) fail
+    args = [rsync, '-aHi', '--acls', '--xattrs', '--fake-super', '-M--super',
             '--numeric-ids', source,
             'root@%s:%s/' % (dest_host, dest_dir.rstrip('/'))]
     if extra_args:
