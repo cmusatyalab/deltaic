@@ -10,11 +10,14 @@ discrepancies.
 
 These data sources are currently supported:
 
-*   Remote filesystems (via `rsync`)
+*   Remote filesystems (via rsync)
 *   GitHub organizations
 *   RADOS Gateway buckets
 *   RADOS Block Device images and snapshots
 *   Coda volumes
+
+Deltaic is released under the [GNU General Public License,
+version 2](COPYING).
 
 
 ## Requirements
@@ -23,8 +26,8 @@ These data sources are currently supported:
 *   An LVM thin pool (see `lvmthin(7)`) to store the backup filesystem and
     associated snapshots.
 *   A backup filesystem with extended-attribute support (the `user_xattr`
-    mount option for `ext4`) and discard support (`discard` for `ext4`). 
-    Note than on RHEL 6, `ext4` filesystems are limited to 16 TB.  Mounting
+    mount option for ext4) and discard support (`discard` for ext4). 
+    Note than on RHEL 6, ext4 filesystems are limited to 16 TB.  Mounting
     `noatime` is recommended.
 
 These are the requirements for just the base system.  Individual data
@@ -90,7 +93,7 @@ sources have additional requirements; see below.
 
 `coda` backs up individual replicas of Coda volumes by connecting to a
 Coda server via `ssh` and running `volutil dump` and `codadump2tar`.
-File/directory UIDs and mode bits are stored as `rsync`-compatible extended
+File/directory UIDs and mode bits are stored as rsync-compatible extended
 attributes.  ACLs are not stored.
 
 For performance, `coda` takes incremental volume dumps when possible. 
@@ -101,7 +104,7 @@ by default).
 #### Requirements
 
 *   For best results, Coda 6.9.6 or above.
-*   SSH `authorized_keys` access to `root` on the Coda servers
+*   SSH `authorized_keys` access to root on the Coda servers
 
 #### Restoring
 
@@ -109,9 +112,9 @@ Authenticate a Coda client on a remote host, then run:
 
     deltaic rsync restore --coda -u <remote-unix-user> <coda-backup-dir> <remote-host> <destination-coda-filesystem-path>
 
-This command runs `rsync` with the necessary options to restore all
+This command runs rsync with the necessary options to restore all
 backed-up metadata.  Additional options specified to the restore command
-(such as `--delete`) will be forwarded to `rsync`.
+(such as `--delete`) will be forwarded to rsync.
 
 
 ### `github`: GitHub organizations
@@ -198,18 +201,18 @@ S3 API does not permit it.
 
 `rsync` backs up remote filesystems using the file synchronization program
 of the same name.  File/directory ownership, modes, ACLs, etc. are stored
-as extended attributes using the `rsync` `--fake-super` option.
+as extended attributes using the rsync `--fake-super` option.
 
 #### Requirements
 
-*   `rsync` 3.1.0 or above on the backup server.  For best results, use a
+*   rsync 3.1.0 or above on the backup server.  For best results, use a
     current version.
-*   SSH `authorized_keys` access to `root` on the remote hosts
+*   SSH `authorized_keys` access to root on the remote hosts
 
 #### Restoring
 
 Use `deltaic rsync restore` to restore a file or directory from the backup
-filesystem to a destination host.  This command runs `rsync` with the
+filesystem to a destination host.  This command runs rsync with the
 necessary options to restore all backed-up metadata.  Additional options
 specified to the restore command (such as `--delete`) will be forwarded to
-`rsync`.
+rsync.
