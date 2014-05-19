@@ -98,7 +98,7 @@ def update_git(url, root_dir, token, scrub=False, ignore_clone_errors=False,
         cmd = [git_path, 'remote', 'update', '--prune']
         cwd = root_dir
 
-    askpass = os.path.join(os.path.dirname(sys.argv[0]), 'mb-askpass')
+    askpass = os.path.join(os.path.dirname(sys.argv[0]), 'dt-askpass')
     askpass = os.path.abspath(askpass)
     env = dict(os.environ)
     env.update({
