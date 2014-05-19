@@ -403,7 +403,7 @@ def cmd_github_ls(config, args):
 
 def _setup():
     group = make_subcommand_group('github',
-            help='GitHub support')
+            help='low-level GitHub support')
 
     parser = group.add_parser('auth',
             help='obtain OAuth token for config file')

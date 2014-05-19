@@ -46,6 +46,11 @@ def get_cmdline_for_subcommand(subcommand):
     return cmd
 
 
+def sort_subparsers():
+    # Ensure top-level help is in a reasonable order
+    subparsers._get_subactions().sort(key=lambda k: k.dest)
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument('-c', '--config-file', metavar='PATH',
         default=_default_config_path,

@@ -134,7 +134,7 @@ def cmd_rsync_restore(config, args):
 
 def _setup():
     group = make_subcommand_group('rsync',
-            help='host filesystem support via rsync')
+            help='low-level rsync support for host filesystems')
 
     parser = group.add_parser('backup',
             help='back up host filesystem')

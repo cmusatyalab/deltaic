@@ -399,7 +399,7 @@ def cmd_rbd_drop(config, args):
 
 def _setup():
     group = make_subcommand_group('rbd',
-            help='RBD image/snapshot support')
+            help='low-level RBD image/snapshot support')
 
     parser = group.add_parser('backup',
             help='back up RBD image or snapshot')

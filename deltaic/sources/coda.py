@@ -279,7 +279,7 @@ def cmd_coda_backup(config, args):
 
 def _setup():
     group = make_subcommand_group('coda',
-            help='Coda support')
+            help='low-level Coda support')
 
     parser = group.add_parser('backup',
             help='back up Coda volume')

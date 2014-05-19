@@ -22,11 +22,12 @@ import os
 import sys
 import yaml
 
-from deltaic.command import parser
+from deltaic.command import parser, sort_subparsers
 
 if __name__ == '__main__':
     if os.geteuid() == 0:
         raise OSError('Do not run as root!')
+    sort_subparsers()
     args = parser.parse_args()
     with open(args.config_file) as fh:
         config = yaml.safe_load(fh)

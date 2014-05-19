@@ -392,7 +392,7 @@ def cmd_rgw_restore(config, args):
 
 def _setup():
     group = make_subcommand_group('rgw',
-            help='radosgw support')
+            help='low-level radosgw support')
 
     parser = group.add_parser('backup',
             help='back up radosgw bucket')
