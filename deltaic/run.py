@@ -42,7 +42,11 @@ def run_tasks(config):
 
 def cmd_run(config, args):
     settings = config['settings']
-    lockfile = os.path.join(settings['root'], '.lock')
+    root_dir = settings['root']
+    root_parent = os.path.dirname(root_dir)
+    lockfile = os.path.join(root_dir, '.lock')
+    if os.stat(root_dir).st_dev == os.stat(root_parent).st_dev:
+        raise IOError('Backup filesystem is not mounted')
     with open(lockfile, 'w') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
