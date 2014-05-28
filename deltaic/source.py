@@ -29,6 +29,7 @@ from .util import make_dir_path
 
 class Task(object):
     DATE_FMT = '%Y%m%d'
+    LOG_EXCERPT_INPUT_BYTES = 8192
     LOG_EXCERPT_MAX_BYTES = 4096
     LOG_EXCERPT_MAX_LINES = 10
 
@@ -60,22 +61,46 @@ class Task(object):
                         else:
                             fh.write('# Task exited with status %d\n' % ret)
                         fh.write('# Ending task at %s\n\n' % timestamp())
+
         if ret:
             with open(log_base + '.err') as err:
+                # Read LOG_EXCERPT_INPUT_BYTES
                 err.seek(0, 2)
-                start = max(0, err.tell() - self.LOG_EXCERPT_MAX_BYTES)
+                start = max(0, err.tell() - self.LOG_EXCERPT_INPUT_BYTES)
                 err.seek(start)
-                excerpt = err.read(self.LOG_EXCERPT_MAX_BYTES).strip()
+                excerpt = err.read(self.LOG_EXCERPT_INPUT_BYTES).strip()
+                truncated = start > 0
+                # Drop exception backtraces
+                accept = True
+                excerpt_lines = []
+                for line in excerpt.split('\n'):
+                    if accept:
+                        if line == 'Traceback (most recent call last):':
+                            accept = False
+                        else:
+                            excerpt_lines.append(line)
+                    elif not line.startswith(' '):
+                        accept = True
+                        excerpt_lines.append(line)
+                # Reduce to LOG_EXCERPT_MAX_BYTES
+                excerpt = '\n'.join(excerpt_lines)
+                if len(excerpt) > self.LOG_EXCERPT_MAX_BYTES:
+                    excerpt = excerpt[-self.LOG_EXCERPT_MAX_BYTES:]
+                    truncated = True
+                # Reduce to LOG_EXCERPT_MAX_LINES
                 excerpt_lines = excerpt.split('\n')
-                if (len(excerpt_lines) > self.LOG_EXCERPT_MAX_LINES or
-                        start > 0):
-                    excerpt_lines = (['[...]'] +
-                            excerpt_lines[-self.LOG_EXCERPT_MAX_LINES:])
+                if len(excerpt_lines) > self.LOG_EXCERPT_MAX_LINES:
+                    excerpt_lines = excerpt_lines[-self.LOG_EXCERPT_MAX_LINES:]
+                    truncated = True
+                # Add truncation indicator
+                if truncated:
+                    excerpt_lines.insert(0, '[...]')
+                # Serialize
                 excerpt = '\n'.join(' ' * 2 + l for l in excerpt_lines)
             sys.stderr.write('Failed:  %s\n  %s\n%s\n' % (self,
                     ' '.join(command), excerpt))
-        sys.stdout.write('Ending   %s\n' % self)
 
+        sys.stdout.write('Ending   %s\n' % self)
         return ret == 0
 
 
