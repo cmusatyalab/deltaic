@@ -96,7 +96,7 @@ class Task(object):
                 if truncated:
                     excerpt_lines.insert(0, '[...]')
                 # Serialize
-                excerpt = '\n'.join(' ' * 2 + l for l in excerpt_lines)
+                excerpt = '\n'.join(' ' * 3 + l for l in excerpt_lines)
             sys.stderr.write('Failed:  %s\n  %s\n%s\n' % (self,
                     ' '.join(command), excerpt))
 
