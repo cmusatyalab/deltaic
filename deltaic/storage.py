@@ -189,12 +189,22 @@ def cmd_mount(config, args):
 def cmd_umount(config, args):
     settings = config['settings']
     vg, _ = settings['backup-lv'].split('/')
-    snapshots = args.snapshot
+    root_dir = settings['root']
+    snapshot_dir = os.path.join(root_dir, 'Snapshots')
+    if args.all:
+        root_dev = os.stat(root_dir).st_dev
+        snapshots = [name for name in sorted(os.listdir(snapshot_dir))
+                if os.stat(os.path.join(snapshot_dir, name)).st_dev !=
+                root_dev]
+    else:
+        snapshots = args.snapshot
+        if not snapshots:
+            raise ValueError('At least one snapshot must be specified')
     for snapshot in snapshots:
         if '/' in snapshot:
             raise ValueError('Invalid snapshot name: %s' % snapshot)
     for snapshot in snapshots:
-        mountpoint = os.path.join(settings['root'], 'Snapshots', snapshot)
+        mountpoint = os.path.join(snapshot_dir, snapshot)
         subprocess.check_call(['sudo', 'umount', mountpoint])
         os.rmdir(mountpoint)
         subprocess.check_call(['sudo', 'lvchange', '-a', 'n',
@@ -221,7 +231,9 @@ def _setup():
     parser = subparsers.add_parser('umount',
             help='unmount one or more snapshots')
     parser.set_defaults(func=cmd_umount)
-    parser.add_argument('snapshot', nargs='+',
+    parser.add_argument('-a', '--all', action='store_true',
+            help='unmount all mounted snapshots')
+    parser.add_argument('snapshot', nargs='*',
             help='snapshot name')
 
 _setup()
