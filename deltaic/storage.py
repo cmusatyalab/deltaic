@@ -173,26 +173,32 @@ def cmd_ls(config, args):
 def cmd_mount(config, args):
     settings = config['settings']
     vg, _ = settings['backup-lv'].split('/')
-    if '/' in args.snapshot:
-        raise ValueError('Invalid snapshot: %s' % args.snapshot)
-    subprocess.check_call(['sudo', 'lvchange', '-a', 'y', '-K',
-            '%s/%s' % (vg, args.snapshot)])
-    mountpoint = make_dir_path(settings['root'], 'Snapshots', args.snapshot)
-    subprocess.check_call(['sudo', 'mount', '-o', 'ro',
-            '/dev/%s/%s' % (vg, args.snapshot), mountpoint])
-    print mountpoint
+    snapshots = args.snapshot
+    for snapshot in snapshots:
+        if '/' in snapshot:
+            raise ValueError('Invalid snapshot name: %s' % snapshot)
+    for snapshot in snapshots:
+        subprocess.check_call(['sudo', 'lvchange', '-a', 'y', '-K',
+                '%s/%s' % (vg, snapshot)])
+        mountpoint = make_dir_path(settings['root'], 'Snapshots', snapshot)
+        subprocess.check_call(['sudo', 'mount', '-o', 'ro',
+                '/dev/%s/%s' % (vg, snapshot), mountpoint])
+        print mountpoint
 
 
 def cmd_umount(config, args):
     settings = config['settings']
     vg, _ = settings['backup-lv'].split('/')
-    if '/' in args.snapshot:
-        raise ValueError('Invalid snapshot: %s' % args.snapshot)
-    mountpoint = os.path.join(settings['root'], 'Snapshots', args.snapshot)
-    subprocess.check_call(['sudo', 'umount', mountpoint])
-    os.rmdir(mountpoint)
-    subprocess.check_call(['sudo', 'lvchange', '-a', 'n',
-            '%s/%s' % (vg, args.snapshot)])
+    snapshots = args.snapshot
+    for snapshot in snapshots:
+        if '/' in snapshot:
+            raise ValueError('Invalid snapshot name: %s' % snapshot)
+    for snapshot in snapshots:
+        mountpoint = os.path.join(settings['root'], 'Snapshots', snapshot)
+        subprocess.check_call(['sudo', 'umount', mountpoint])
+        os.rmdir(mountpoint)
+        subprocess.check_call(['sudo', 'lvchange', '-a', 'n',
+                '%s/%s' % (vg, snapshot)])
 
 
 def _setup():
@@ -207,15 +213,15 @@ def _setup():
     parser.set_defaults(func=cmd_ls)
 
     parser = subparsers.add_parser('mount',
-            help='mount a snapshot')
+            help='mount one or more snapshots')
     parser.set_defaults(func=cmd_mount)
-    parser.add_argument('snapshot',
+    parser.add_argument('snapshot', nargs='+',
             help='snapshot name')
 
     parser = subparsers.add_parser('umount',
-            help='unmount a snapshot')
+            help='unmount one or more snapshots')
     parser.set_defaults(func=cmd_umount)
-    parser.add_argument('snapshot',
+    parser.add_argument('snapshot', nargs='+',
             help='snapshot name')
 
 _setup()
