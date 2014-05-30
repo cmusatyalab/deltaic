@@ -97,7 +97,7 @@ class Task(object):
                     excerpt_lines.insert(0, '[...]')
                 # Serialize
                 excerpt = '\n'.join(' ' * 3 + l for l in excerpt_lines)
-            sys.stderr.write('Failed:  %s\n  %s\n%s\n' % (self,
+            sys.stderr.write('Failed:  %s\n   %s\n%s\n' % (self,
                     ' '.join(command), excerpt))
 
         sys.stdout.write('Ending   %s\n' % self)
