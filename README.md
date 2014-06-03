@@ -36,6 +36,8 @@ sources have additional requirements; see below.
 
 ## Setting up Deltaic
 
+1.  Create a user account to run backups.
+
 1.  Create an LVM volume group, a thin-provisioning pool, and a
     thin-provisioned backup volume within it.
 
@@ -50,22 +52,23 @@ sources have additional requirements; see below.
     thin_metadata_size - 3.18 gigabytes estimated metadata area size for "--block-size=2megabytes --pool-size=200terabytes --max-thins=1000"
     ```
 
-    So, for example, if your backup device is `/dev/md0`:
+    So, for example, if your backup device is `/dev/md0` and your user
+    account is `user`:
 
     ```shell
     pvcreate /dev/md0
     vgcreate backups /dev/md0
     lvcreate -l 100%FREE -T backups/pool --chunksize 2m --poolmetadatasize 16g
     lvcreate -V200t -T backups/pool -n current
-    mkfs.ext4 -E lazy_itable_init /dev/backups/current
+    mkfs.ext4 -m 0 -E lazy_itable_init /dev/backups/current
     mkdir /srv/backup
     mount /dev/backups/current /srv/backup
-    echo "/dev/backups/current /srv/backup ext4 user_xattr,discard,noatime 1 2" >> /etc/fstab
+    chown user.user /srv/backup
+    chmod 700 /srv/backup
+    echo "/dev/backups/current /srv/backup ext4 user_xattr,discard,noatime 0 2" >> /etc/fstab
     ```
 
-1.  Create a user account to run backups.
-
-1.  From that user account:
+1.  From the backup user account:
 
     ```shell
     virtualenv env
