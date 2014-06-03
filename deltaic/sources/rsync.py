@@ -25,7 +25,7 @@ import sys
 
 from ..command import make_subcommand_group
 from ..source import Task, Source
-from ..util import random_do_work
+from ..util import make_dir_path, random_do_work
 
 def remote_command(host, command):
     args = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no',
@@ -67,6 +67,7 @@ def run_rsync_with_fallback(cmd):
 def backup_host(host, root_dir, mounts, exclude=(), scrub=False, rsync=None):
     if rsync is None:
         rsync = 'rsync'
+    make_dir_path(root_dir)
     args = [rsync, '-aHRxi', '--acls', '--xattrs', '--fake-super', '--delete',
             '--delete-excluded', '--numeric-ids', '--stats', '--partial',
             '--rsh=ssh -o BatchMode=yes -o StrictHostKeyChecking=no']
