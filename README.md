@@ -23,6 +23,7 @@ version 2](COPYING).
 ## Requirements
 
 *   Python 2.6 or 2.7 and virtualenv
+*   sudo
 *   An LVM thin pool (see **lvmthin**(7)) to store the backup filesystem and
     associated snapshots.
 *   A backup filesystem with extended-attribute support (the `user_xattr`
