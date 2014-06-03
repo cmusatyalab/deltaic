@@ -84,7 +84,7 @@ sources have additional requirements; see below.
     ```shell
     virtualenv env
     env/bin/pip install https://github.com/cmusatyalab/deltaic
-    env/bin/deltaic mkconf sudoers | sudo tee /etc/sudoers.d/backup
+    env/bin/deltaic mkconf sudoers | sudo tee /etc/sudoers.d/deltaic
     env/bin/deltaic mkconf crontab --email your@email.address | crontab
     ```
 
