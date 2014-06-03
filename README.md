@@ -68,15 +68,6 @@ sources have additional requirements; see below.
     echo "/dev/backups/current /srv/backup ext4 user_xattr,discard,noatime 0 2" >> /etc/fstab
     ```
 
-1.  From the backup user account:
-
-    ```shell
-    virtualenv env
-    env/bin/pip install https://github.com/cmusatyalab/deltaic
-    env/bin/deltaic mkconf sudoers | sudo tee /etc/sudoers.d/backup
-    env/bin/deltaic mkconf crontab --email your@email.address | crontab
-    ```
-
 1.  Create a config file in `~/.config/deltaic.conf`.  See
     [example-config.yaml](example-config.yaml) for the available settings. 
     Here is a minimal config file for the above configuration:
@@ -85,6 +76,15 @@ sources have additional requirements; see below.
     settings:
       root: /srv/backup
       backup-lv: backups/current
+    ```
+
+1.  From the backup user account:
+
+    ```shell
+    virtualenv env
+    env/bin/pip install https://github.com/cmusatyalab/deltaic
+    env/bin/deltaic mkconf sudoers | sudo tee /etc/sudoers.d/backup
+    env/bin/deltaic mkconf crontab --email your@email.address | crontab
     ```
 
 1. Set up data sources as described below.
