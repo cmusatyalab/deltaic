@@ -88,7 +88,9 @@ sources have additional requirements; see below.
     env/bin/deltaic mkconf crontab --email your@email.address | crontab
     ```
 
-1. Set up data sources as described below.
+1. Set up data sources by configuring the system as described below and
+   then making the [proper entries](example-config.yaml) in
+   `~/.config/deltaic.conf`.
 
 
 ## Data Sources
