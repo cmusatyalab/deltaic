@@ -168,7 +168,7 @@ rsync:
     # [default: no command]
     pre: /usr/local/bin/database_snapshot --create
     # Command to run on remote system after backup
-    # (whether or not the backup was successful)
+    # (only if the backup was successful)
     # [default: no command]
     post: /usr/local/bin/database_snapshot --delete
     # A list of rsync exclude patterns to be applied, in addition to the
