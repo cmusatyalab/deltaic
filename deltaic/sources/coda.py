@@ -214,8 +214,11 @@ def update_dir(host, backup_id, root_dir, incremental=False, volutil=None,
         proc = subprocess.Popen(volutil_cmd(host, 'dump', args,
                 volutil=volutil), stdout=subprocess.PIPE, stderr=null)
 
-    tar = tarfile.open(fileobj=proc.stdout, mode='r|')
-    valid_paths = update_dir_from_tar(tar, root_dir)
+    try:
+        tar = tarfile.open(fileobj=proc.stdout, mode='r|')
+        valid_paths = update_dir_from_tar(tar, root_dir)
+    except tarfile.ReadError, e:
+        raise DumpError(str(e))
 
     if proc.wait():
         raise DumpError('Coda dump returned %d' % proc.returncode)
