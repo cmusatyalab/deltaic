@@ -51,10 +51,6 @@ def run_rsync(cmd):
 def run_rsync_with_fallback(cmd):
     cmd = list(cmd)
     ret = run_rsync(cmd)
-    if ret in (2, 10):
-        # Try falling back to protocol 30 to work around failures when one
-        # rsync is 3.1.0 and the other is >= 3.1.1
-        ret = run_rsync(cmd + ['--protocol=30'])
     if ret == 2:
         # Drop features that require protocol >= 30
         cmd.remove('--acls')
