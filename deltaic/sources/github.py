@@ -368,10 +368,8 @@ def cmd_github_auth(config, args):
 
 
 def get_relroot(organization, repo=None):
-    components = ['github', organization]
-    if repo:
-        components.append(repo)
-    return os.path.join(*components)
+    return os.path.join('github', organization,
+            repo if repo else '@organization')
 
 
 def cmd_github_backup(config, args):
