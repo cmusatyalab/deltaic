@@ -23,7 +23,7 @@ import os
 import sys
 
 from .command import subparsers
-from .source import Source
+from .sources import Source
 from .storage import Snapshot
 from . import sources as _  # Load all sources
 

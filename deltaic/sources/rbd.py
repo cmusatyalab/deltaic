@@ -26,8 +26,8 @@ import uuid
 
 from ..command import make_subcommand_group
 from ..platform import punch
-from ..source import Task, Source
 from ..util import XAttrs, make_dir_path, random_do_work
+from . import Task, Source
 
 BLOCKSIZE = 256 << 10
 DIFF_MAGIC = 'rbd diff v1\n'

@@ -24,8 +24,8 @@ import subprocess
 import sys
 
 from ..command import make_subcommand_group
-from ..source import Task, Source
 from ..util import make_dir_path, random_do_work
+from . import Task, Source
 
 def remote_command(host, command):
     args = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no',

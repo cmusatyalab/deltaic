@@ -28,9 +28,9 @@ import time
 import yaml
 
 from ..command import make_subcommand_group, get_cmdline_for_subcommand
-from ..source import Task, Source
 from ..util import (BloomSet, UpdateFile, update_file, XAttrs,
         random_do_work, datetime_to_time_t, gc_directory_tree, make_dir_path)
+from . import Task, Source
 
 ATTR_CONTENT_TYPE = 'user.github.content-type'
 ATTR_ETAG = 'user.github.etag'

@@ -29,9 +29,9 @@ import time
 import xml.etree.cElementTree as ET
 
 from ..command import make_subcommand_group
-from ..source import Task, Source
 from ..util import (BloomSet, UpdateFile, update_file, random_do_work,
         datetime_to_time_t, make_dir_path)
+from . import Task, Source
 
 KEY_METADATA_ATTRS = {
     'cache_control': 'Cache-Control',

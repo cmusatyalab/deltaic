@@ -26,9 +26,9 @@ import tarfile
 
 from ..command import make_subcommand_group
 from ..platform import lutime
-from ..source import Task, Source
 from ..util import (BloomSet, gc_directory_tree, update_file, XAttrs,
         random_do_work, make_dir_path)
+from . import Task, Source
 
 ATTR_INCREMENTAL = 'user.coda.incremental-ok'
 ATTR_STAT = 'user.rsync.%stat'
