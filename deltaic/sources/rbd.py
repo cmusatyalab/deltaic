@@ -27,7 +27,7 @@ import uuid
 from ..command import make_subcommand_group
 from ..platform import punch
 from ..util import XAttrs, make_dir_path, random_do_work
-from . import Task, Source
+from . import Target, Source
 
 BLOCKSIZE = 256 << 10
 DIFF_MAGIC = 'rbd diff v1\n'
@@ -434,20 +434,20 @@ def _setup():
 _setup()
 
 
-class ImageTask(Task):
+class ImageTarget(Target):
     def __init__(self, settings, pool, friendly_name):
-        Task.__init__(self, settings)
+        Target.__init__(self, settings)
         self.root = get_relroot(pool, friendly_name)
-        self.args = ['rbd', 'backup', pool, friendly_name]
+        self.backup_args = ['rbd', 'backup', pool, friendly_name]
         if random_do_work(settings, 'rbd-scrub-probability', 0.0166):
-            self.args.append('-c')
+            self.backup_args.append('-c')
 
 
-class SnapshotTask(ImageTask):
+class SnapshotTarget(ImageTarget):
     def __init__(self, settings, pool, friendly_name):
-        ImageTask.__init__(self, settings, pool, friendly_name)
+        ImageTarget.__init__(self, settings, pool, friendly_name)
         self.root = get_relroot(pool, friendly_name, snapshot=True)
-        self.args.append('-s')
+        self.backup_args.append('-s')
 
 
 class RBDSource(Source):
@@ -457,8 +457,8 @@ class RBDSource(Source):
         Source.__init__(self, config)
         for pool, info in sorted(self._manifest.items()):
             for friendly_name in sorted(info.get('images', {})):
-                self._queue.put(ImageTask(self._settings, pool,
+                self._queue.put(ImageTarget(self._settings, pool,
                         friendly_name))
             for friendly_name in sorted(info.get('snapshots', {})):
-                self._queue.put(SnapshotTask(self._settings, pool,
+                self._queue.put(SnapshotTarget(self._settings, pool,
                         friendly_name))

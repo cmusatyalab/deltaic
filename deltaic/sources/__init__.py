@@ -27,7 +27,7 @@ from threading import Thread
 from ..command import get_cmdline_for_subcommand
 from ..util import make_dir_path
 
-class Task(object):
+class Target(object):
     DATE_FMT = '%Y%m%d'
     LOG_EXCERPT_INPUT_BYTES = 8192
     LOG_EXCERPT_MAX_BYTES = 4096
@@ -35,17 +35,19 @@ class Task(object):
 
     def __init__(self, settings):
         self._settings = settings
+        self.root = None
+        self.backup_args = None
 
     def __str__(self):
         return self.root
 
-    def run(self):
+    def back_up(self):
         log_dir = make_dir_path(self._settings['root'], 'Logs', self.root)
         log_base = os.path.join(log_dir, date.today().strftime(self.DATE_FMT))
         timestamp = lambda: datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         sys.stdout.write('Starting %s\n' % self)
-        command = get_cmdline_for_subcommand(self.args)
+        command = get_cmdline_for_subcommand(self.backup_args)
         with open('/dev/null', 'r+') as null:
             with open(log_base + '.err', 'a') as err:
                 with open(log_base + '.out', 'a') as out:
@@ -130,10 +132,10 @@ class Source(object):
     def _worker(self):
         while True:
             try:
-                task = self._queue.get_nowait()
+                target = self._queue.get_nowait()
             except Queue.Empty:
                 return
-            if not task.run():
+            if not target.back_up():
                 self._success = False
 
     def wait(self):

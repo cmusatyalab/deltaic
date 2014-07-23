@@ -27,7 +27,7 @@ from .sources import Source
 from .storage import Snapshot
 from . import sources as _  # Load all sources
 
-def run_tasks(config):
+def back_up_targets(config):
     sources = []
     for source_type in Source.get_sources().values():
         source = source_type(config)
@@ -57,7 +57,7 @@ def cmd_run(config, args):
             else:
                 raise
 
-        success = run_tasks(config)
+        success = back_up_targets(config)
         if args.snapshot:
             vg, lv = settings['backup-lv'].split('/')
             Snapshot.create(vg, lv, verbose=True)

@@ -31,7 +31,7 @@ import xml.etree.cElementTree as ET
 from ..command import make_subcommand_group
 from ..util import (BloomSet, UpdateFile, update_file, random_do_work,
         datetime_to_time_t, make_dir_path)
-from . import Task, Source
+from . import Target, Source
 
 KEY_METADATA_ATTRS = {
     'cache_control': 'Cache-Control',
@@ -417,15 +417,15 @@ def _setup():
 _setup()
 
 
-class BucketTask(Task):
+class BucketTarget(Target):
     def __init__(self, settings, name):
-        Task.__init__(self, settings)
+        Target.__init__(self, settings)
         self.root = get_relroot(name)
-        self.args = ['rgw', 'backup', name]
+        self.backup_args = ['rgw', 'backup', name]
         if random_do_work(settings, 'rgw-scrub-acl-probability', 0):
-            self.args.append('-A')
+            self.backup_args.append('-A')
         if random_do_work(settings, 'rgw-scrub-probability', 0.0166):
-            self.args.append('-c')
+            self.backup_args.append('-c')
 
 
 class RGWSource(Source):
@@ -434,4 +434,4 @@ class RGWSource(Source):
     def __init__(self, config):
         Source.__init__(self, config)
         for name in self._manifest:
-            self._queue.put(BucketTask(self._settings, name))
+            self._queue.put(BucketTarget(self._settings, name))

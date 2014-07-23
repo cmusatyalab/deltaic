@@ -30,7 +30,7 @@ import yaml
 from ..command import make_subcommand_group, get_cmdline_for_subcommand
 from ..util import (BloomSet, UpdateFile, update_file, XAttrs,
         random_do_work, datetime_to_time_t, gc_directory_tree, make_dir_path)
-from . import Task, Source
+from . import Target, Source
 
 ATTR_CONTENT_TYPE = 'user.github.content-type'
 ATTR_ETAG = 'user.github.etag'
@@ -426,15 +426,15 @@ def _setup():
 _setup()
 
 
-class GitHubTask(Task):
+class GitHubTarget(Target):
     def __init__(self, settings, org, repo=None):
-        Task.__init__(self, settings)
+        Target.__init__(self, settings)
         self.root = get_relroot(org, repo)
-        self.args = ['github', 'backup', org]
+        self.backup_args = ['github', 'backup', org]
         if repo:
-            self.args.append(repo)
+            self.backup_args.append(repo)
         if random_do_work(settings, 'github-scrub-probability', 0.0166):
-            self.args.append('-c')
+            self.backup_args.append('-c')
 
 
 class GitHubSource(Source):
@@ -453,7 +453,7 @@ class GitHubSource(Source):
             repos = [r for r in out.split('\n') if r]
             # Update org metadata
             if info.get('organization-metadata', True):
-                self._queue.put(GitHubTask(self._settings, org))
+                self._queue.put(GitHubTarget(self._settings, org))
             # Update repos
             for repo in repos:
-                self._queue.put(GitHubTask(self._settings, org, repo))
+                self._queue.put(GitHubTarget(self._settings, org, repo))
