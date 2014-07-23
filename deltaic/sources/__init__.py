@@ -106,28 +106,18 @@ class Target(object):
         return ret == 0
 
 
-class Source(object):
-    def __init__(self, config):
-        self._settings = config.get('settings', {})
-        self._manifest = config.get(self.LABEL, {})
+class _SourceBackupTask(object):
+    def __init__(self, thread_count, targets):
         self._queue = Queue.Queue()
-        self._thread_count = self._settings.get('%s-workers' % self.LABEL, 1)
-        self._threads = []
+        for target in targets:
+            self._queue.put(target)
         self._success = True
-
-    @classmethod
-    def get_sources(cls):
-        sources = {}
-        for subclass in cls.__subclasses__():
-            if hasattr(subclass, 'LABEL'):
-                sources[subclass.LABEL] = subclass
-        return sources
+        self._threads = [Thread(target=self._worker)
+                for i in range(thread_count)]
 
     def start(self):
-        for n in range(self._thread_count):
-            thread = Thread(target=self._worker)
+        for thread in self._threads:
             thread.start()
-            self._threads.append(thread)
 
     def _worker(self):
         while True:
@@ -141,8 +131,28 @@ class Source(object):
     def wait(self):
         for thread in self._threads:
             thread.join()
-        self._threads = []
         return self._success
+
+
+class Source(object):
+    def __init__(self, config):
+        self._settings = config.get('settings', {})
+        self._manifest = config.get(self.LABEL, {})
+
+    @classmethod
+    def get_sources(cls):
+        sources = {}
+        for subclass in cls.__subclasses__():
+            if hasattr(subclass, 'LABEL'):
+                sources[subclass.LABEL] = subclass
+        return sources
+
+    def get_targets(self):
+        raise NotImplementedError
+
+    def get_backup_task(self):
+        thread_count = self._settings.get('%s-workers' % self.LABEL, 1)
+        return _SourceBackupTask(thread_count, self.get_targets())
 
 
 # Now import submodules that need these definitions

@@ -28,14 +28,15 @@ from .storage import Snapshot
 from . import sources as _  # Load all sources
 
 def back_up_targets(config):
-    sources = []
+    tasks = []
     for source_type in Source.get_sources().values():
         source = source_type(config)
-        source.start()
-        sources.append(source)
+        task = source.get_backup_task()
+        task.start()
+        tasks.append(task)
     success = True
-    for source in sources:
-        if not source.wait():
+    for task in tasks:
+        if not task.wait():
             success = False
     return success
 

@@ -440,8 +440,8 @@ class GitHubTarget(Target):
 class GitHubSource(Source):
     LABEL = 'github'
 
-    def __init__(self, config):
-        Source.__init__(self, config)
+    def get_targets(self):
+        ret = []
         for org, info in self._manifest.items():
             info = info or {}
             # Dynamically obtain list of repos
@@ -453,7 +453,8 @@ class GitHubSource(Source):
             repos = [r for r in out.split('\n') if r]
             # Update org metadata
             if info.get('organization-metadata', True):
-                self._queue.put(GitHubTarget(self._settings, org))
+                ret.append(GitHubTarget(self._settings, org))
             # Update repos
             for repo in repos:
-                self._queue.put(GitHubTarget(self._settings, org, repo))
+                ret.append(GitHubTarget(self._settings, org, repo))
+        return ret

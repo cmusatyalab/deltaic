@@ -431,7 +431,8 @@ class BucketTarget(Target):
 class RGWSource(Source):
     LABEL = 'rgw'
 
-    def __init__(self, config):
-        Source.__init__(self, config)
+    def get_targets(self):
+        ret = []
         for name in self._manifest:
-            self._queue.put(BucketTarget(self._settings, name))
+            ret.append(BucketTarget(self._settings, name))
+        return ret

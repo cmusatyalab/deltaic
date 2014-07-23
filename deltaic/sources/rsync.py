@@ -172,8 +172,9 @@ class RsyncTarget(Target):
 class RsyncSource(Source):
     LABEL = 'rsync'
 
-    def __init__(self, config):
-        Source.__init__(self, config)
+    def get_targets(self):
+        ret = []
         for hostname, info in sorted(self._manifest.items(),
                 key=lambda e: e[1].get('alias', e[0])):
-            self._queue.put(RsyncTarget(self._settings, hostname, info))
+            ret.append(RsyncTarget(self._settings, hostname, info))
+        return ret

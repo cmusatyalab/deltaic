@@ -314,9 +314,10 @@ class CodaTarget(Target):
 class CodaSource(Source):
     LABEL = 'coda'
 
-    def __init__(self, config):
-        Source.__init__(self, config)
+    def get_targets(self):
+        ret = []
         for group in self._manifest:
             for volume in group['volumes']:
                 for server in group['servers']:
-                    self._queue.put(CodaTarget(self._settings, server, volume))
+                    ret.append(CodaTarget(self._settings, server, volume))
+        return ret
