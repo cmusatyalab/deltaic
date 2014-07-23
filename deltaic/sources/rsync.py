@@ -25,7 +25,7 @@ import sys
 
 from ..command import make_subcommand_group
 from ..util import make_dir_path, random_do_work
-from . import Target, Source
+from . import Source, Unit
 
 def remote_command(host, command):
     args = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no',
@@ -160,9 +160,9 @@ def _setup():
 _setup()
 
 
-class RsyncTarget(Target):
+class RsyncUnit(Unit):
     def __init__(self, settings, hostname, info):
-        Target.__init__(self, settings)
+        Unit.__init__(self, settings)
         self.root = get_relroot(hostname, info)
         self.backup_args = ['rsync', 'backup', hostname]
         if random_do_work(settings, 'rsync-scrub-probability', 0.0166):
@@ -172,9 +172,9 @@ class RsyncTarget(Target):
 class RsyncSource(Source):
     LABEL = 'rsync'
 
-    def get_targets(self):
+    def get_units(self):
         ret = []
         for hostname, info in sorted(self._manifest.items(),
                 key=lambda e: e[1].get('alias', e[0])):
-            ret.append(RsyncTarget(self._settings, hostname, info))
+            ret.append(RsyncUnit(self._settings, hostname, info))
         return ret

@@ -30,7 +30,7 @@ import yaml
 from ..command import make_subcommand_group, get_cmdline_for_subcommand
 from ..util import (BloomSet, UpdateFile, update_file, XAttrs,
         random_do_work, datetime_to_time_t, gc_directory_tree, make_dir_path)
-from . import Target, Source
+from . import Source, Unit
 
 ATTR_CONTENT_TYPE = 'user.github.content-type'
 ATTR_ETAG = 'user.github.etag'
@@ -426,9 +426,9 @@ def _setup():
 _setup()
 
 
-class GitHubTarget(Target):
+class GitHubUnit(Unit):
     def __init__(self, settings, org, repo=None):
-        Target.__init__(self, settings)
+        Unit.__init__(self, settings)
         self.root = get_relroot(org, repo)
         self.backup_args = ['github', 'backup', org]
         if repo:
@@ -440,7 +440,7 @@ class GitHubTarget(Target):
 class GitHubSource(Source):
     LABEL = 'github'
 
-    def get_targets(self):
+    def get_units(self):
         ret = []
         for org, info in self._manifest.items():
             info = info or {}
@@ -453,8 +453,8 @@ class GitHubSource(Source):
             repos = [r for r in out.split('\n') if r]
             # Update org metadata
             if info.get('organization-metadata', True):
-                ret.append(GitHubTarget(self._settings, org))
+                ret.append(GitHubUnit(self._settings, org))
             # Update repos
             for repo in repos:
-                ret.append(GitHubTarget(self._settings, org, repo))
+                ret.append(GitHubUnit(self._settings, org, repo))
         return ret

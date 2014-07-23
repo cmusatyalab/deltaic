@@ -27,7 +27,7 @@ from threading import Thread
 from ..command import get_cmdline_for_subcommand
 from ..util import make_dir_path
 
-class Target(object):
+class Unit(object):
     DATE_FMT = '%Y%m%d'
     LOG_EXCERPT_INPUT_BYTES = 8192
     LOG_EXCERPT_MAX_BYTES = 4096
@@ -107,10 +107,10 @@ class Target(object):
 
 
 class _SourceBackupTask(object):
-    def __init__(self, thread_count, targets):
+    def __init__(self, thread_count, units):
         self._queue = Queue.Queue()
-        for target in targets:
-            self._queue.put(target)
+        for unit in units:
+            self._queue.put(unit)
         self._success = True
         self._threads = [Thread(target=self._worker)
                 for i in range(thread_count)]
@@ -122,10 +122,10 @@ class _SourceBackupTask(object):
     def _worker(self):
         while True:
             try:
-                target = self._queue.get_nowait()
+                unit = self._queue.get_nowait()
             except Queue.Empty:
                 return
-            if not target.back_up():
+            if not unit.back_up():
                 self._success = False
 
     def wait(self):
@@ -147,12 +147,12 @@ class Source(object):
                 sources[subclass.LABEL] = subclass
         return sources
 
-    def get_targets(self):
+    def get_units(self):
         raise NotImplementedError
 
     def get_backup_task(self):
         thread_count = self._settings.get('%s-workers' % self.LABEL, 1)
-        return _SourceBackupTask(thread_count, self.get_targets())
+        return _SourceBackupTask(thread_count, self.get_units())
 
 
 # Now import submodules that need these definitions

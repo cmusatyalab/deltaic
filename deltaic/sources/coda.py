@@ -28,7 +28,7 @@ from ..command import make_subcommand_group
 from ..platform import lutime
 from ..util import (BloomSet, gc_directory_tree, update_file, XAttrs,
         random_do_work, make_dir_path)
-from . import Target, Source
+from . import Source, Unit
 
 ATTR_INCREMENTAL = 'user.coda.incremental-ok'
 ATTR_STAT = 'user.rsync.%stat'
@@ -302,9 +302,9 @@ def _setup():
 _setup()
 
 
-class CodaTarget(Target):
+class CodaUnit(Unit):
     def __init__(self, settings, server, volume):
-        Target.__init__(self, settings)
+        Unit.__init__(self, settings)
         self.root = get_relroot(server, volume)
         self.backup_args = ['coda', 'backup', server, volume]
         if random_do_work(settings, 'coda-full-probability', 0.143):
@@ -314,10 +314,10 @@ class CodaTarget(Target):
 class CodaSource(Source):
     LABEL = 'coda'
 
-    def get_targets(self):
+    def get_units(self):
         ret = []
         for group in self._manifest:
             for volume in group['volumes']:
                 for server in group['servers']:
-                    ret.append(CodaTarget(self._settings, server, volume))
+                    ret.append(CodaUnit(self._settings, server, volume))
         return ret

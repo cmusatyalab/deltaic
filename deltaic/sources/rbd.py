@@ -27,7 +27,7 @@ import uuid
 from ..command import make_subcommand_group
 from ..platform import punch
 from ..util import XAttrs, make_dir_path, random_do_work
-from . import Target, Source
+from . import Source, Unit
 
 BLOCKSIZE = 256 << 10
 DIFF_MAGIC = 'rbd diff v1\n'
@@ -434,18 +434,18 @@ def _setup():
 _setup()
 
 
-class ImageTarget(Target):
+class ImageUnit(Unit):
     def __init__(self, settings, pool, friendly_name):
-        Target.__init__(self, settings)
+        Unit.__init__(self, settings)
         self.root = get_relroot(pool, friendly_name)
         self.backup_args = ['rbd', 'backup', pool, friendly_name]
         if random_do_work(settings, 'rbd-scrub-probability', 0.0166):
             self.backup_args.append('-c')
 
 
-class SnapshotTarget(ImageTarget):
+class SnapshotUnit(ImageUnit):
     def __init__(self, settings, pool, friendly_name):
-        ImageTarget.__init__(self, settings, pool, friendly_name)
+        ImageUnit.__init__(self, settings, pool, friendly_name)
         self.root = get_relroot(pool, friendly_name, snapshot=True)
         self.backup_args.append('-s')
 
@@ -453,11 +453,11 @@ class SnapshotTarget(ImageTarget):
 class RBDSource(Source):
     LABEL = 'rbd'
 
-    def get_targets(self):
+    def get_units(self):
         ret = []
         for pool, info in sorted(self._manifest.items()):
             for friendly_name in sorted(info.get('images', {})):
-                ret.append(ImageTarget(self._settings, pool, friendly_name))
+                ret.append(ImageUnit(self._settings, pool, friendly_name))
             for friendly_name in sorted(info.get('snapshots', {})):
-                ret.append(SnapshotTarget(self._settings, pool, friendly_name))
+                ret.append(SnapshotUnit(self._settings, pool, friendly_name))
         return ret
