@@ -96,6 +96,18 @@ class Snapshot(object):
                     '%s/%s' % (self.vg, self.name)], stdin=null,
                     stdout=None if verbose else null)
 
+    def mount(self, mountpoint):
+        subprocess.check_call(['sudo', 'lvchange', '-a', 'y', '-K',
+                '%s/%s' % (self.vg, self.name)])
+        subprocess.check_call(['sudo', 'mount', '-o', 'ro',
+                '/dev/%s/%s' % (self.vg, self.name), mountpoint])
+
+    def umount(self, mountpoint):
+        subprocess.check_call(['sudo', 'umount', mountpoint])
+        # May fail if double-mounted
+        subprocess.call(['sudo', 'lvchange', '-a', 'n',
+                '%s/%s' % (self.vg, self.name)])
+
 
 class StorageStatus(object):
     def __init__(self, vg, lv, mountpoint):
@@ -178,11 +190,12 @@ def cmd_mount(config, args):
         if '/' in snapshot:
             raise ValueError('Invalid snapshot name: %s' % snapshot)
     for snapshot in snapshots:
-        subprocess.check_call(['sudo', 'lvchange', '-a', 'y', '-K',
-                '%s/%s' % (vg, snapshot)])
         mountpoint = make_dir_path(settings['root'], 'Snapshots', snapshot)
-        subprocess.check_call(['sudo', 'mount', '-o', 'ro',
-                '/dev/%s/%s' % (vg, snapshot), mountpoint])
+        try:
+            Snapshot(vg, snapshot).mount(mountpoint)
+        except:
+            os.rmdir(mountpoint)
+            raise
         print mountpoint
 
 
@@ -205,10 +218,8 @@ def cmd_umount(config, args):
             raise ValueError('Invalid snapshot name: %s' % snapshot)
     for snapshot in snapshots:
         mountpoint = os.path.join(snapshot_dir, snapshot)
-        subprocess.check_call(['sudo', 'umount', mountpoint])
+        Snapshot(vg, snapshot).umount(mountpoint)
         os.rmdir(mountpoint)
-        subprocess.check_call(['sudo', 'lvchange', '-a', 'n',
-                '%s/%s' % (vg, snapshot)])
 
 
 def _setup():
