@@ -304,7 +304,7 @@ _setup()
 
 class CodaUnit(Unit):
     def __init__(self, settings, server, volume):
-        Unit.__init__(self, settings)
+        Unit.__init__(self)
         self.root = get_relroot(server, volume)
         self.backup_args = ['coda', 'backup', server, volume]
         if random_do_work(settings, 'coda-full-probability', 0.143):

@@ -28,26 +28,62 @@ from ..command import get_cmdline_for_subcommand
 from ..util import make_dir_path
 
 class Unit(object):
-    DATE_FMT = '%Y%m%d'
-    LOG_EXCERPT_INPUT_BYTES = 8192
-    LOG_EXCERPT_MAX_BYTES = 4096
-    LOG_EXCERPT_MAX_LINES = 10
-
-    def __init__(self, settings):
-        self._settings = settings
+    def __init__(self):
         self.root = None
         self.backup_args = None
 
     def __str__(self):
         return self.root
 
-    def back_up(self):
-        log_dir = make_dir_path(self._settings['root'], 'Logs', self.root)
+
+class Task(object):
+    def __init__(self, thread_count, units):
+        self._queue = Queue.Queue()
+        for unit in units:
+            self._queue.put(unit)
+        self._success = True
+        self._threads = [Thread(target=self._worker)
+                for i in range(thread_count)]
+
+    def start(self):
+        for thread in self._threads:
+            thread.start()
+
+    def _worker(self):
+        while True:
+            try:
+                unit = self._queue.get_nowait()
+            except Queue.Empty:
+                return
+            if not self._execute(unit):
+                self._success = False
+
+    def _execute(self, unit):
+        raise NotImplementedError
+
+    def wait(self):
+        for thread in self._threads:
+            thread.join()
+        return self._success
+
+
+class _SourceBackupTask(Task):
+    DATE_FMT = '%Y%m%d'
+    LOG_EXCERPT_INPUT_BYTES = 8192
+    LOG_EXCERPT_MAX_BYTES = 4096
+    LOG_EXCERPT_MAX_LINES = 10
+
+    def __init__(self, settings, thread_count, units):
+        Task.__init__(self, thread_count, units)
+        self._settings = settings
+
+    def _execute(self, unit):
+        log_dir = make_dir_path(self._settings['root'], 'Logs', unit.root)
         log_base = os.path.join(log_dir, date.today().strftime(self.DATE_FMT))
         timestamp = lambda: datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        sys.stdout.write('Starting %s\n' % self)
-        command = get_cmdline_for_subcommand(self.backup_args)
+        sys.stdout.write('Starting %s\n' % unit)
+        command = get_cmdline_for_subcommand(unit.backup_args)
         with open('/dev/null', 'r+') as null:
             with open(log_base + '.err', 'a') as err:
                 with open(log_base + '.out', 'a') as out:
@@ -99,39 +135,11 @@ class Unit(object):
                     excerpt_lines.insert(0, '[...]')
                 # Serialize
                 excerpt = '\n'.join(' ' * 3 + l for l in excerpt_lines)
-            sys.stderr.write('Failed:  %s\n   %s\n%s\n' % (self,
+            sys.stderr.write('Failed:  %s\n   %s\n%s\n' % (unit,
                     ' '.join(command), excerpt))
 
-        sys.stdout.write('Ending   %s\n' % self)
+        sys.stdout.write('Ending   %s\n' % unit)
         return ret == 0
-
-
-class _SourceBackupTask(object):
-    def __init__(self, thread_count, units):
-        self._queue = Queue.Queue()
-        for unit in units:
-            self._queue.put(unit)
-        self._success = True
-        self._threads = [Thread(target=self._worker)
-                for i in range(thread_count)]
-
-    def start(self):
-        for thread in self._threads:
-            thread.start()
-
-    def _worker(self):
-        while True:
-            try:
-                unit = self._queue.get_nowait()
-            except Queue.Empty:
-                return
-            if not unit.back_up():
-                self._success = False
-
-    def wait(self):
-        for thread in self._threads:
-            thread.join()
-        return self._success
 
 
 class Source(object):
@@ -152,7 +160,8 @@ class Source(object):
 
     def get_backup_task(self):
         thread_count = self._settings.get('%s-workers' % self.LABEL, 1)
-        return _SourceBackupTask(thread_count, self.get_units())
+        return _SourceBackupTask(self._settings, thread_count,
+                self.get_units())
 
 
 # Now import submodules that need these definitions

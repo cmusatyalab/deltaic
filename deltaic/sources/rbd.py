@@ -436,7 +436,7 @@ _setup()
 
 class ImageUnit(Unit):
     def __init__(self, settings, pool, friendly_name):
-        Unit.__init__(self, settings)
+        Unit.__init__(self)
         self.root = get_relroot(pool, friendly_name)
         self.backup_args = ['rbd', 'backup', pool, friendly_name]
         if random_do_work(settings, 'rbd-scrub-probability', 0.0166):

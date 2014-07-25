@@ -162,7 +162,7 @@ _setup()
 
 class RsyncUnit(Unit):
     def __init__(self, settings, hostname, info):
-        Unit.__init__(self, settings)
+        Unit.__init__(self)
         self.root = get_relroot(hostname, info)
         self.backup_args = ['rsync', 'backup', hostname]
         if random_do_work(settings, 'rsync-scrub-probability', 0.0166):

@@ -419,7 +419,7 @@ _setup()
 
 class BucketUnit(Unit):
     def __init__(self, settings, name):
-        Unit.__init__(self, settings)
+        Unit.__init__(self)
         self.root = get_relroot(name)
         self.backup_args = ['rgw', 'backup', name]
         if random_do_work(settings, 'rgw-scrub-acl-probability', 0):

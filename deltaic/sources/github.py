@@ -428,7 +428,7 @@ _setup()
 
 class GitHubUnit(Unit):
     def __init__(self, settings, org, repo=None):
-        Unit.__init__(self, settings)
+        Unit.__init__(self)
         self.root = get_relroot(org, repo)
         self.backup_args = ['github', 'backup', org]
         if repo:
