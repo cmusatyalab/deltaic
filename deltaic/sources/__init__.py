@@ -37,6 +37,11 @@ class Unit(object):
 
 
 class Task(object):
+    DATE_FMT = '%Y%m%d'
+    LOG_EXCERPT_INPUT_BYTES = 8192
+    LOG_EXCERPT_MAX_BYTES = 4096
+    LOG_EXCERPT_MAX_LINES = 10
+
     def __init__(self, thread_count, units):
         self._queue = Queue.Queue()
         for unit in units:
@@ -66,24 +71,12 @@ class Task(object):
             thread.join()
         return self._success
 
-
-class _SourceBackupTask(Task):
-    DATE_FMT = '%Y%m%d'
-    LOG_EXCERPT_INPUT_BYTES = 8192
-    LOG_EXCERPT_MAX_BYTES = 4096
-    LOG_EXCERPT_MAX_LINES = 10
-
-    def __init__(self, settings, thread_count, units):
-        Task.__init__(self, thread_count, units)
-        self._settings = settings
-
-    def _execute(self, unit):
-        log_dir = make_dir_path(self._settings['root'], 'Logs', unit.root)
+    def _run_subcommand(self, name, args, log_dir):
         log_base = os.path.join(log_dir, date.today().strftime(self.DATE_FMT))
         timestamp = lambda: datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        sys.stdout.write('Starting %s\n' % unit)
-        command = get_cmdline_for_subcommand(unit.backup_args)
+        sys.stdout.write('Starting %s\n' % name)
+        command = get_cmdline_for_subcommand(args)
         with open('/dev/null', 'r+') as null:
             with open(log_base + '.err', 'a') as err:
                 with open(log_base + '.out', 'a') as out:
@@ -135,11 +128,21 @@ class _SourceBackupTask(Task):
                     excerpt_lines.insert(0, '[...]')
                 # Serialize
                 excerpt = '\n'.join(' ' * 3 + l for l in excerpt_lines)
-            sys.stderr.write('Failed:  %s\n   %s\n%s\n' % (unit,
+            sys.stderr.write('Failed:  %s\n   %s\n%s\n' % (name,
                     ' '.join(command), excerpt))
 
-        sys.stdout.write('Ending   %s\n' % unit)
+        sys.stdout.write('Ending   %s\n' % name)
         return ret == 0
+
+
+class _SourceBackupTask(Task):
+    def __init__(self, settings, thread_count, units):
+        Task.__init__(self, thread_count, units)
+        self._settings = settings
+
+    def _execute(self, unit):
+        log_dir = make_dir_path(self._settings['root'], 'Logs', unit.root)
+        return self._run_subcommand(unit.root, unit.backup_args, log_dir)
 
 
 class Source(object):
