@@ -21,6 +21,7 @@ import calendar
 from contextlib import contextmanager
 from cStringIO import StringIO
 import errno
+import fcntl
 import os
 from pybloom import ScalableBloomFilter
 import random
@@ -28,6 +29,10 @@ from tempfile import mkdtemp, mkstemp
 import xattr
 
 TEMPFILE_PREFIX = '.backup-tmp'
+
+class LockConflict(Exception):
+    pass
+
 
 class BloomSet(object):
     def __init__(self, initial_capacity=1000, error_rate=0.0001):
@@ -318,6 +323,26 @@ def _test_update_file():
         except OSError:
             pass
         os.rmdir(dirpath)
+
+
+@contextmanager
+def lockfile(settings, name):
+    root_dir = settings['root']
+    root_parent = os.path.dirname(root_dir)
+    if os.stat(root_dir).st_dev == os.stat(root_parent).st_dev:
+        raise IOError('Backup filesystem is not mounted')
+
+    lock_dir = make_dir_path(root_dir, '.lock')
+    lock_file = os.path.join(lock_dir, name)
+    with open(lock_file, 'w') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except IOError, e:
+            if e.errno in (errno.EACCES, errno.EAGAIN):
+                raise LockConflict('Another action is already running.')
+            else:
+                raise
+        yield
 
 
 class XAttrs(object):

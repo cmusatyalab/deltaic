@@ -17,14 +17,10 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-import errno
-import fcntl
-import os
-import sys
-
 from .command import subparsers
 from .sources import Source
 from .storage import Snapshot
+from .util import lockfile
 from . import sources as _  # Load all sources
 
 def back_up_units(config):
@@ -43,28 +39,13 @@ def back_up_units(config):
 
 def cmd_run(config, args):
     settings = config['settings']
-    root_dir = settings['root']
-    root_parent = os.path.dirname(root_dir)
-    lockfile = os.path.join(root_dir, '.lock')
-    if os.stat(root_dir).st_dev == os.stat(root_parent).st_dev:
-        raise IOError('Backup filesystem is not mounted')
-    with open(lockfile, 'w') as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except IOError, e:
-            if e.errno in (errno.EACCES, errno.EAGAIN):
-                print >>sys.stderr, 'Another backup is already running.'
-                return 1
-            else:
-                raise
-
+    with lockfile(settings, 'backup'):
         success = back_up_units(config)
         if args.snapshot:
             vg, lv = settings['backup-lv'].split('/')
             Snapshot.create(vg, lv, verbose=True)
-
-    if not success:
-        return 1
+        if not success:
+            return 1
 
 
 def _setup():
