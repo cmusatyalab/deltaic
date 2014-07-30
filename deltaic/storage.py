@@ -88,7 +88,7 @@ class PhysicalSnapshot(Snapshot):
                 continue
             vg, lv = line.split()
             ret.append(cls(vg, lv))
-        return ret
+        return sorted(ret)
 
     @classmethod
     def create(cls, settings, verbose=False):
@@ -198,7 +198,7 @@ def cmd_df(config, args):
 
 
 def cmd_ls(config, args):
-    for snapshot in sorted(PhysicalSnapshot.list()):
+    for snapshot in PhysicalSnapshot.list():
         print snapshot
 
 
