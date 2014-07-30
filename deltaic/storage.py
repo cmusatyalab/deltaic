@@ -27,10 +27,8 @@ from .util import make_dir_path
 
 class Snapshot(object):
     DATE_FMT = '%Y%m%d'
-    TAG = 'backup-snapshot'
 
-    def __init__(self, vg, name):
-        self.vg = vg
+    def __init__(self, name):
         self.name = name
         datecode, revision = name.split('-')
         self.date = datetime.strptime(datecode, self.DATE_FMT).date()
@@ -40,10 +38,10 @@ class Snapshot(object):
         self.month = ((self.week - 1) // 4) + 1
 
     def __str__(self):
-        return '%s' % self.name
+        return str(self.name)
 
     def __repr__(self):
-        return 'Snapshot(%s, %s)' % (repr(self.vg), repr(self.name))
+        return 'Snapshot(%s)' % repr(self.name)
 
     def __cmp__(self, other):
         if not isinstance(other, self.__class__):
@@ -54,6 +52,23 @@ class Snapshot(object):
             return 1
         else:
             return self.revision - other.revision
+
+    def get_physical(self, settings):
+        vg, _ = settings['backup-lv'].split('/')
+        return PhysicalSnapshot(vg, self.name)
+
+
+class PhysicalSnapshot(Snapshot):
+    TAG = 'backup-snapshot'
+
+    def __init__(self, vg, name):
+        if '/' in name:
+            raise ValueError('Invalid snapshot name: %s' % name)
+        Snapshot.__init__(self, name)
+        self.vg = vg
+
+    def __repr__(self):
+        return 'PhysicalSnapshot(%s, %s)' % (repr(self.vg), repr(self.name))
 
     @classmethod
     def list(cls):
@@ -68,7 +83,7 @@ class Snapshot(object):
             if not line:
                 continue
             vg, lv = line.split()
-            ret.append(Snapshot(vg, lv))
+            ret.append(cls(vg, lv))
         return ret
 
     @classmethod
@@ -178,21 +193,18 @@ def cmd_df(config, args):
 
 
 def cmd_ls(config, args):
-    for snapshot in sorted(Snapshot.list()):
+    for snapshot in sorted(PhysicalSnapshot.list()):
         print snapshot
 
 
 def cmd_mount(config, args):
     settings = config['settings']
-    vg, _ = settings['backup-lv'].split('/')
-    snapshots = args.snapshot
+    snapshots = [Snapshot(s).get_physical(settings) for s in args.snapshot]
     for snapshot in snapshots:
-        if '/' in snapshot:
-            raise ValueError('Invalid snapshot name: %s' % snapshot)
-    for snapshot in snapshots:
-        mountpoint = make_dir_path(settings['root'], 'Snapshots', snapshot)
+        mountpoint = make_dir_path(settings['root'], 'Snapshots',
+                snapshot.name)
         try:
-            Snapshot(vg, snapshot).mount(mountpoint)
+            snapshot.mount(mountpoint)
         except:
             os.rmdir(mountpoint)
             raise
@@ -201,7 +213,6 @@ def cmd_mount(config, args):
 
 def cmd_umount(config, args):
     settings = config['settings']
-    vg, _ = settings['backup-lv'].split('/')
     root_dir = settings['root']
     snapshot_dir = os.path.join(root_dir, 'Snapshots')
     if args.all:
@@ -213,12 +224,10 @@ def cmd_umount(config, args):
         snapshots = args.snapshot
         if not snapshots:
             raise ValueError('At least one snapshot must be specified')
+    snapshots = [Snapshot(s).get_physical(settings) for s in snapshots]
     for snapshot in snapshots:
-        if '/' in snapshot:
-            raise ValueError('Invalid snapshot name: %s' % snapshot)
-    for snapshot in snapshots:
-        mountpoint = os.path.join(snapshot_dir, snapshot)
-        Snapshot(vg, snapshot).umount(mountpoint)
+        mountpoint = os.path.join(snapshot_dir, snapshot.name)
+        snapshot.umount(mountpoint)
         os.rmdir(mountpoint)
 
 

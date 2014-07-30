@@ -19,7 +19,7 @@
 
 from .command import subparsers
 from .sources import Source
-from .storage import Snapshot
+from .storage import PhysicalSnapshot
 from .util import lockfile
 from . import sources as _  # Load all sources
 
@@ -43,7 +43,7 @@ def cmd_run(config, args):
         success = back_up_units(config)
         if args.snapshot:
             vg, lv = settings['backup-lv'].split('/')
-            Snapshot.create(vg, lv, verbose=True)
+            PhysicalSnapshot.create(vg, lv, verbose=True)
         if not success:
             return 1
 

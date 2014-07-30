@@ -21,7 +21,7 @@ from datetime import date, timedelta
 import os
 
 from .command import subparsers
-from .storage import Snapshot
+from .storage import PhysicalSnapshot
 
 def select_snapshots_to_remove(settings, snapshots):
     conf_duplicate_days = settings.get('gc-duplicate-days', 14)
@@ -89,7 +89,7 @@ def prune_logs(root_dir, distinct_days):
 def cmd_prune(config, args):
     settings = config['settings']
 
-    snapshots = Snapshot.list()
+    snapshots = PhysicalSnapshot.list()
     remove = select_snapshots_to_remove(settings, snapshots)
     for cur in sorted(remove):
         if args.dry_run:
