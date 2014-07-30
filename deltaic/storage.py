@@ -74,6 +74,9 @@ class PhysicalSnapshot(Snapshot):
     def __repr__(self):
         return 'PhysicalSnapshot(%s, %s)' % (repr(self.vg), repr(self.name))
 
+    def get_physical(self, settings):
+        return self
+
     @classmethod
     def list(cls):
         proc = subprocess.Popen(['sudo', 'lvs', '--noheadings',
