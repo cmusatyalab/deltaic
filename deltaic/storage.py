@@ -54,8 +54,12 @@ class Snapshot(object):
             return self.revision - other.revision
 
     def get_physical(self, settings):
-        vg, _ = settings['backup-lv'].split('/')
+        vg, _ = self._get_backup_vg_lv(settings)
         return PhysicalSnapshot(vg, self.name)
+
+    @classmethod
+    def _get_backup_vg_lv(cls, settings):
+        return settings['backup-lv'].split('/')
 
 
 class PhysicalSnapshot(Snapshot):
@@ -87,7 +91,8 @@ class PhysicalSnapshot(Snapshot):
         return ret
 
     @classmethod
-    def create(cls, vg, lv, verbose=False):
+    def create(cls, settings, verbose=False):
+        vg, lv = cls._get_backup_vg_lv(settings)
         today = date.today().strftime(cls.DATE_FMT)
         with open('/dev/null', 'r+') as null:
             # Give up eventually in case test keeps failing

@@ -42,8 +42,7 @@ def cmd_run(config, args):
     with lockfile(settings, 'backup'):
         success = back_up_units(config)
         if args.snapshot:
-            vg, lv = settings['backup-lv'].split('/')
-            PhysicalSnapshot.create(vg, lv, verbose=True)
+            PhysicalSnapshot.create(settings, verbose=True)
         if not success:
             return 1
 
