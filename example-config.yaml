@@ -102,6 +102,52 @@ settings:
   # [default: 1]
   rsync-workers: 2
 
+  ## Offsite archive settings
+  # Temporary filesystem for archive data
+  # [required for archiving]
+  archive-spool: /srv/spool
+  # GPG key identifier for signing archives
+  # [required for archive encryption]
+  archive-gpg-signing-key: 0123456789abcdef
+  # Recipient GPG key identifiers
+  # [required for archive encryption]
+  archive-gpg-recipients:
+    - 0123456789fedcba
+  # The path to tar on the local server
+  # [default: tar]
+  archive-tar-path: /usr/local/bin/tar
+  # The path to gpg on the local server
+  # [default: gpg2]
+  archive-gpg-path: /usr/local/bin/gpg2
+
+  ## Archiver profiles
+  # [required for archiving]
+  archivers:
+    # Default profile
+    default:
+      ## aws archiver
+      # Select archiver
+      # [required]
+      archiver: aws
+      # AWS access key ID
+      # [required]
+      aws-access-key-id: value
+      # AWS secret access key
+      # [required]
+      aws-secret-access-key: value
+      # AWS region
+      # [required]
+      aws-region: us-east-1
+      # Name of Glacier vault and SimpleDB domain
+      # [required]
+      aws-namespace: vault-name
+      # Number of snapshots to keep archived
+      # [default: 1]
+      keep-count: 1
+      # Number of simultaneous archive jobs
+      # [default: 8]
+      workers: 8
+
 ## Backup units for coda source
 coda:
   # A set of volume replicas

@@ -17,4 +17,4 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from . import run, prune, storage, template, sources
+from . import run, prune, storage, template, sources, archivers

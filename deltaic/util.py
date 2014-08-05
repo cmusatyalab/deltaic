@@ -25,6 +25,7 @@ import fcntl
 import os
 from pybloom import ScalableBloomFilter
 import random
+import subprocess
 from tempfile import mkdtemp, mkstemp
 import xattr
 
@@ -389,6 +390,61 @@ def make_dir_path(*args):
         if e.errno != errno.EEXIST:
             raise
     return path
+
+
+def humanize_size(size):
+    units = ('  B', 'KiB', 'MiB', 'GiB', 'TiB')
+    index = 0
+    while size >= 1024 and index < len(units):
+        size /= 1024
+        index += 1
+    return '%.1f %s' % (size, units[index])
+
+
+class Pipeline(object):
+    def __init__(self, cmds, in_fh=None, out_fh=None, env=None):
+        self._procs = []
+
+        fin = []
+        fout = []
+        try:
+            fin.append(in_fh)
+            for _ in range(len(cmds) - 1):
+                pipe_r, pipe_w = os.pipe()
+                fout.append(pipe_w)
+                fin.append(pipe_r)
+            fout.append(out_fh)
+
+            for i, cmd in enumerate(cmds):
+                proc = subprocess.Popen(cmd, stdin=fin[i], stdout=fout[i],
+                        env=env, close_fds=True)
+                self._procs.append(proc)
+        finally:
+            for fh in fout + fin:
+                if fh is not in_fh and fh is not out_fh:
+                    os.close(fh)
+
+    def close(self, terminate=False):
+        if terminate:
+            for proc in self._procs:
+                proc.terminate()
+        failed = False
+        while self._procs:
+            proc = self._procs.pop()
+            proc.wait()
+            failed = failed or proc.returncode
+        if failed and not terminate:
+            raise IOError('Pipeline process returned non-zero exit status')
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        # On exception, terminate processes to avoid deadlock
+        self.close(exc_type is not None)
+
+    def __del__(self):
+        self.close()
 
 
 if __name__ == '__main__':

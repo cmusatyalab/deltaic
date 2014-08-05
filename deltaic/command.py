@@ -31,7 +31,9 @@ _default_config_path = _get_default_config_path()
 
 def make_subcommand_group(name, help):
     subparser = subparsers.add_parser(name, help=help)
-    return subparser.add_subparsers(metavar='COMMAND')
+    group = subparser.add_subparsers(metavar='COMMAND')
+    group.parser = subparser
+    return group
 
 
 def get_cmdline_for_subcommand(subcommand):

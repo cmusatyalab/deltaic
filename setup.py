@@ -33,7 +33,7 @@ setup(
     license='GNU General Public License, version 2',
     install_requires=[
         'argparse',
-        'boto',
+        'boto >= 2.23.0',
         'github3.py >= 0.9.0',
         'pybloom', # >= 2.0
         'python-dateutil',

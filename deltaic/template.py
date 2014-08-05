@@ -30,6 +30,11 @@ MAILTO = %(email)s
 0 23 * * * %(prog)s prune
 55 23 * * * %(prog)s df -c
 0 0 * * * %(prog)s run >/dev/null && echo "OK"
+
+# To run offsite archives, enable these jobs and configure their schedule
+#0 0 1 1,4,7,10 * %(prog)s archive run
+#0 4 * * * %(prog)s archive prune
+#0 3 30 6,12 * %(prog)s archive resync
 ''',
 
     'sudoers': '''
