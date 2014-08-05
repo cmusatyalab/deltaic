@@ -60,8 +60,12 @@ class Task(object):
                 unit = self._queue.get_nowait()
             except Queue.Empty:
                 return
-            if not self._execute(unit):
+            try:
+                if not self._execute(unit):
+                    self._success = False
+            except:
                 self._success = False
+                raise
 
     def _execute(self, unit):
         raise NotImplementedError
