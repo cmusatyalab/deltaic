@@ -50,7 +50,7 @@ sources have additional requirements; see below.
 
     ```shell
     $ thin_metadata_size -b 2m -s 200t -m 1000 -u g
-    thin_metadata_size - 3.18 gigabytes estimated metadata area size for "--block-size=2megabytes --pool-size=200terabytes --max-thins=1000"
+    thin_metadata_size - 3.18 gibibytes estimated metadata area size for "--block-size=2mebibytes --pool-size=200tebibytes --max-thins=1000"
     ```
 
     So, for example, if your backup device is `/dev/md0` and your user
