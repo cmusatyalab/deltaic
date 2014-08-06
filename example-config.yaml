@@ -141,6 +141,9 @@ settings:
       # Name of Glacier vault and SimpleDB domain
       # [required]
       aws-namespace: vault-name
+      # Storage cost per GB-month in selected region
+      # [default: 0.01]
+      aws-storage-cost: 0.012
       # Number of snapshots to keep archived
       # [default: 1]
       keep-count: 1

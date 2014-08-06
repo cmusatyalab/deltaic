@@ -73,6 +73,10 @@ class Archiver(object):
         # Perform any necessary resynchronization of data and metadata.
         raise NotImplementedError
 
+    def report_cost(self):
+        # Print report on storage costs to stdout.
+        raise NotImplementedError
+
 
 class ArchiveInfo(object):
     ATTR_COMPRESSION = 'user.archive.compression'
@@ -398,6 +402,12 @@ def cmd_run(config, args):
             return 1
 
 
+def cmd_cost(config, args):
+    settings = config['settings']
+    archiver = Archiver.get_archiver(settings, args.profile)
+    archiver.report_cost()
+
+
 def cmd_ls(config, args):
     settings = config['settings']
     archiver = Archiver.get_archiver(settings, args.profile)
@@ -464,6 +474,10 @@ def _setup():
             help='snapshot name')
     parser.add_argument('-r', '--resume', action='store_true',
             help='resume previous run')
+
+    parser = group.add_parser('cost',
+            help='calculate storage costs')
+    parser.set_defaults(func=cmd_cost)
 
     parser = group.add_parser('ls',
             help='list existing offsite archives')

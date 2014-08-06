@@ -21,6 +21,7 @@ from __future__ import division
 from boto.exception import BotoServerError
 import boto.glacier
 import boto.sdb
+import calendar
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 import dateutil.parser
@@ -68,6 +69,7 @@ class AWSArchiver(Archiver):
                 aws_access_key_id=profile['aws-access-key-id'],
                 aws_secret_access_key=profile['aws-secret-access-key'])
         self._vault = glacier.create_vault(profile['aws-namespace'])
+        self._storage_cost = profile.get('aws-storage-cost', 0.01)
 
     @classmethod
     def _make_set_item_name(cls, set_name):
@@ -211,3 +213,24 @@ class AWSArchiver(Archiver):
         if vault_archives:
             print 'Deleted %d leaked archives, %d bytes' % (
                     len(vault_archives), sum(vault_archives.values()))
+
+    def report_cost(self):
+        msg = '''
+The %(total_size)s currently in storage costs $%(storage_cost).2f/month.
+
+You can retrieve around %(free_transfer)s for free today.  If you retrieve more than
+that, you must carefully watch your retrieval rate.  Each additional GB/hour
+will cost $%(transfer_cost_gb).2f, but is then available for the whole month at no additional
+charge.
+'''.strip()
+
+        total_size = sum(metadata['size']
+                for metadata in self.list_sets().values())
+        now = datetime.now(tz=tzutc())
+        days_in_month = calendar.monthrange(now.year, now.month)[1]
+        print msg % {
+            'total_size': humanize_size(total_size),
+            'storage_cost': (total_size / (1 << 30)) * self._storage_cost,
+            'free_transfer' : humanize_size(total_size * .05 / days_in_month),
+            'transfer_cost_gb': self._storage_cost * days_in_month * 24,
+        }
