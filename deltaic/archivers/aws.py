@@ -53,6 +53,9 @@ class AWSArchiver(Archiver):
     UPLOAD_PART_SIZE = 64 << 20
     RETRIEVAL_DELAY = 10
     JOB_CHECK_INTERVAL = 60
+
+    # Glacier billing parameters
+    MONTHLY_FREE_RETRIEVAL_FRACTION = .05
     PROTECTED_PERIOD = timedelta(days=90, hours=1)  # 1-hour slop for paranoia
 
     def __init__(self, profile_name, profile):
@@ -231,6 +234,7 @@ charge.
         print msg % {
             'total_size': humanize_size(total_size),
             'storage_cost': (total_size / (1 << 30)) * self._storage_cost,
-            'free_transfer' : humanize_size(total_size * .05 / days_in_month),
+            'free_transfer' : humanize_size(total_size *
+                    self.MONTHLY_FREE_RETRIEVAL_FRACTION / days_in_month),
             'transfer_cost_gb': self._storage_cost * days_in_month * 24,
         }
