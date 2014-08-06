@@ -164,6 +164,13 @@ class ArchivePacker(object):
         )
 
     def unpack(self, in_file, info, out_root):
+        if info.encryption != self.encryption:
+            # If the archive server is compromised, don't allow it to bypass
+            # signature checking by replacing the archive and changing
+            # the encryption field to "none"
+            raise ValueError("Archive encryption doesn't match " +
+                    "local settings; check metadata integrity")
+
         fh = open(in_file, 'rb')
         try:
             if info.encryption == 'gpg':
