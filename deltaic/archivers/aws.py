@@ -86,6 +86,10 @@ class AWSArchiver(Archiver):
     def _quote_value(cls, value):
         return value.replace('"', '""')
 
+    @classmethod
+    def _now(cls):
+        return datetime.now(tz=tzutc())
+
     def _wait_for_job(self, job):
         print 'Wait 3-5 hours...'
         while True:
@@ -94,7 +98,7 @@ class AWSArchiver(Archiver):
             time.sleep(self.JOB_CHECK_INTERVAL)
 
     def list_sets(self):
-        now = datetime.now(tz=tzutc())
+        now = self._now()
         sets = {}
         qstr = ('select `aws-set`, `aws-complete`, `aws-creation-time`, ' +
                 '`size` from `%s`') % self._domain.name
@@ -158,7 +162,7 @@ class AWSArchiver(Archiver):
                 'aws-set': set_name,
                 'aws-archive': archive_name,
                 'aws-aid': aid,
-                'aws-creation-time': datetime.now(tz=tzutc()).isoformat(),
+                'aws-creation-time': self._now().isoformat(),
             })
             item_name = self._make_archive_item_name(set_name, archive_name)
             with _conditional_check():
@@ -229,7 +233,7 @@ charge.
 
         total_size = sum(metadata['size']
                 for metadata in self.list_sets().values())
-        now = datetime.now(tz=tzutc())
+        now = self._now()
         days_in_month = calendar.monthrange(now.year, now.month)[1]
         print msg % {
             'total_size': humanize_size(total_size),
