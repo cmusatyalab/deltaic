@@ -192,7 +192,19 @@ class ArchivePacker(object):
                     fh.close()
                     fh = fh2
 
-            elif info.encryption != 'none':
+            elif info.encryption == 'none':
+                # No signature, so check SHA-256.
+                hash = sha256()
+                while True:
+                    buf = fh.read(self.BUFLEN)
+                    if not buf:
+                        break
+                    hash.update(buf)
+                if hash.hexdigest() != info.sha256:
+                    raise IOError('SHA-256 mismatch')
+                fh.seek(0)
+
+            else:
                 raise ValueError('Unknown encryption method')
 
             self._pipeline([[self._tar, 'xz', '--force-local', '--acls',
@@ -200,20 +212,6 @@ class ArchivePacker(object):
                     in_fh=fh).close()
         finally:
             fh.close()
-
-
-class _SHA256File(object):
-    def __init__(self, fh):
-        self._hash = sha256()
-        self._fh = fh
-
-    def write(self, buf):
-        self._hash.update(buf)
-        self._fh.write(buf)
-
-    @property
-    def digest(self):
-        return self._hash.hexdigest()
 
 
 class _ArchiveTask(Task):
@@ -298,15 +296,13 @@ class _Archive(object):
         if os.path.exists(out_path):
             raise ValueError('Output file already exists')
         with write_atomic(out_path, prefix='.retrieve-') as fh:
-            hasher = _SHA256File(fh)
             metadata = self.archiver.download_archive(self.snapshot.name,
-                    self.unit_name, hasher)
+                    self.unit_name, fh)
             if not metadata:
                 raise ValueError('No such archive')
             if fh.tell() != int(metadata['size']):
                 raise IOError('Size mismatch')
-            if hasher.digest != metadata['sha256']:
-                raise IOError('SHA-256 mismatch')
+            # Defer digest/signature checking until unpack
         return (out_path, ArchiveInfo(
             compression=metadata['compression'],
             encryption=metadata['encryption'],
