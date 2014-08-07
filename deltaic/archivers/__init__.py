@@ -20,6 +20,7 @@
 from __future__ import division
 from hashlib import sha256
 import os
+import subprocess
 import sys
 from tempfile import TemporaryFile, NamedTemporaryFile, mkdtemp
 
@@ -186,11 +187,40 @@ class ArchivePacker(object):
                 # GPG wouldn't verify the signature until after tar had
                 # already received a lot of untrusted data.
                 fh2 = TemporaryFile(dir=self._spool_dir, prefix='unpack-')
+                pipe_r, pipe_w = os.pipe()
+                status_pipe = os.fdopen(pipe_r, 'r')
                 try:
-                    Pipeline([self._gpg_cmd(['-d'])], in_fh=fh,
-                            out_fh=fh2, env=self._gpg_env).close()
+                    # Ensure we won't be fooled by an archive which is
+                    # encrypted but not signed.  While we're at it, ensure
+                    # the configured signing key was used.
+                    cmd = self._gpg_cmd(['-d', '--status-fd', str(pipe_w)])
+                    proc = subprocess.Popen(cmd, stdin=fh, stdout=fh2,
+                            env=self._gpg_env)
+                    os.close(pipe_w)
+
+                    verified = False
+                    configured_key = self._gpg_signing_key.lower()
+                    for line in status_pipe:
+                        words = line.split()
+                        # Compare configured key with the long key ID and
+                        # the key fingerprint
+                        try:
+                            if (words[2].lower() == configured_key and
+                                    words[1] in ('GOODSIG', 'VALIDSIG')):
+                                verified = True
+                        except IndexError:
+                            pass
+
+                    proc.wait()
+                    if proc.returncode:
+                        raise IOError('gpg failed with exit status %d' %
+                                proc.returncode)
+                    if not verified:
+                        raise IOError('Could not verify GPG signature with ' +
+                                'configured signing key')
                     fh2.seek(0)
                 finally:
+                    status_pipe.close()
                     fh.close()
                     fh = fh2
 
