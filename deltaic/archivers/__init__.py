@@ -122,19 +122,16 @@ class ArchivePacker(object):
         self._gpg_recipients = settings.get('archive-gpg-recipients')
         self._gpg_signing_key = settings.get('archive-gpg-signing-key')
 
-        self.compression = 'gzip'
-        self.encryption = 'gpg' if self._gpg_recipients else 'none'
-
-    @classmethod
-    def _pipeline(cls, cmds, in_fh=None, out_fh=None):
-        env = dict(os.environ)
+        self._gpg_env = dict(os.environ)
         try:
             # Required for GPG passphrase prompting
-            env['GPG_TTY'] = os.ttyname(sys.stdin.fileno())
+            self._gpg_env['GPG_TTY'] = os.ttyname(sys.stdin.fileno())
         except OSError:
             # stdin is not a tty
             pass
-        return Pipeline(cmds, in_fh=in_fh, out_fh=out_fh, env=env)
+
+        self.compression = 'gzip'
+        self.encryption = 'gpg' if self._gpg_recipients else 'none'
 
     def _gpg_cmd(self, args):
         return [self._gpg, '--batch', '--no-tty', '--no-options',
@@ -156,7 +153,7 @@ class ArchivePacker(object):
 
         pipe_r, pipe_w = os.pipe()
         with os.fdopen(pipe_r, 'r') as in_fh:
-            with self._pipeline(cmds, out_fh=pipe_w):
+            with Pipeline(cmds, out_fh=pipe_w, env=self._gpg_env):
                 os.close(pipe_w)
                 hash = sha256()
                 while True:
@@ -190,8 +187,8 @@ class ArchivePacker(object):
                 # already received a lot of untrusted data.
                 fh2 = TemporaryFile(dir=self._spool_dir, prefix='unpack-')
                 try:
-                    self._pipeline([self._gpg_cmd(['-d'])], in_fh=fh,
-                            out_fh=fh2).close()
+                    Pipeline([self._gpg_cmd(['-d'])], in_fh=fh,
+                            out_fh=fh2, env=self._gpg_env).close()
                     fh2.seek(0)
                 finally:
                     fh.close()
@@ -212,7 +209,7 @@ class ArchivePacker(object):
             else:
                 raise ValueError('Unknown encryption method')
 
-            self._pipeline([[self._tar, 'xz', '--force-local', '--acls',
+            Pipeline([[self._tar, 'xz', '--force-local', '--acls',
                     '--selinux', '--xattrs', '-C', out_root]],
                     in_fh=fh).close()
         finally:
