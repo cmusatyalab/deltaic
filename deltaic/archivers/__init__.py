@@ -100,6 +100,8 @@ class ArchiveInfo(object):
         )
 
     def to_file(self, path):
+        if os.stat(path).st_size != self.size:
+            raise IOError('Size mismatch')
         attrs = XAttrs(path)
         attrs.update(self.ATTR_COMPRESSION, self.compression)
         attrs.update(self.ATTR_ENCRYPTION, self.encryption)
