@@ -26,8 +26,7 @@ from tempfile import TemporaryFile, NamedTemporaryFile, mkdtemp
 from ..command import subparsers, make_subcommand_group
 from ..sources import Source, Task
 from ..storage import Snapshot, PhysicalSnapshot
-from ..util import (Pipeline, XAttrs, make_dir_path, lockfile, write_atomic,
-        humanize_size)
+from ..util import Pipeline, XAttrs, make_dir_path, lockfile, humanize_size
 
 class Archiver(object):
     def __init__(self, profile_name, profile):
@@ -65,8 +64,13 @@ class Archiver(object):
     def upload_archive(self, set_name, archive_name, metadata, local_path):
         raise NotImplementedError
 
-    def download_archive(self, set_name, archive_name, fh):
-        # Return metadata
+    def download_archives(self, set_name, archive_list):
+        # archive_list is a sequence of (archive_name, local_path) tuples.
+        # Returns an iterator yielding one of:
+        #   (archive_name, metadata)  -> Success
+        #   (archive_name, exception) -> Failure
+        # Archive retrievals should be initiated in order but may complete
+        # out of order.
         raise NotImplementedError
 
     def resync(self):
@@ -270,6 +274,43 @@ class SnapshotArchiveSet(object):
     def mark_complete(self):
         self.archiver.complete_set(self.snapshot.name)
 
+    def retrieve_archives(self, out_dir, archives):
+        # Returns an iterator yielding one of:
+        #   (archive, file_path) -> Success
+        #   (archive, exception) -> Failure
+
+        # Collect metadata
+        archive_lookup = {}	# name -> _Archive
+        archive_paths = {}	# _Archive -> out_path
+        archive_list = []	# [(name, out_path)]
+        for archive in archives:
+            out_path = os.path.join(out_dir, '%s:%s' % (self.snapshot.name,
+                    archive.unit_name.replace('/', '-')))
+            if not os.path.exists(out_path):
+                archive_lookup[archive.unit_name] = archive
+                archive_paths[archive] = out_path
+                archive_list.append((archive.unit_name, out_path))
+            else:
+                yield (archive, ValueError('Output file already exists'))
+
+        # Retrieve
+        for archive_name, result in self.archiver.download_archives(
+                self.snapshot.name, archive_list):
+            archive = archive_lookup[archive_name]
+            out_path = archive_paths[archive]
+            if not isinstance(result, Exception):
+                try:
+                    ArchiveInfo(
+                        compression=result['compression'],
+                        encryption=result['encryption'],
+                        size=int(result['size']),
+                        sha256=result['sha256'],
+                    ).to_file(out_path)
+                    result = out_path
+                except Exception, e:
+                    result = e
+            yield (archive, result)
+
     def delete(self):
         self.archiver.delete_set(self.snapshot.name)
 
@@ -290,27 +331,6 @@ class _Archive(object):
         }
         self.archiver.upload_archive(self.snapshot.name, self.unit_name,
                 metadata, in_path)
-
-    def retrieve(self, out_dir):
-        out_path = os.path.join(out_dir, '%s:%s' % (self.snapshot.name,
-                self.unit_name.replace('/', '-')))
-        if os.path.exists(out_path):
-            raise ValueError('Output file already exists')
-        with write_atomic(out_path, prefix='.retrieve-') as fh:
-            metadata = self.archiver.download_archive(self.snapshot.name,
-                    self.unit_name, fh)
-            if not metadata:
-                raise ValueError('No such archive')
-            if fh.tell() != int(metadata['size']):
-                raise IOError('Size mismatch')
-            # Defer digest/signature checking until unpack
-        ArchiveInfo(
-            compression=metadata['compression'],
-            encryption=metadata['encryption'],
-            size=int(metadata['size']),
-            sha256=metadata['sha256'],
-        ).to_file(out_path)
-        return out_path
 
 
 def archive_unit(settings, archive, snapshot_root):
@@ -429,13 +449,22 @@ def cmd_retrieve(config, args):
     settings = config['settings']
     archiver = Archiver.get_archiver(settings, args.profile)
     set = SnapshotArchiveSet(archiver, Snapshot(args.snapshot))
-    archive = set.get_archive(args.unit)
-    archive.retrieve(args.destdir)
+    archives = [set.get_archive(unit) for unit in args.unit]
+    make_dir_path(args.destdir)
+    ret = 0
+    for archive, result in set.retrieve_archives(args.destdir, archives):
+        if isinstance(result, Exception):
+            print >>sys.stderr, '%s: %s' % (archive.unit_name, result)
+            ret = 1
+        else:
+            print archive.unit_name
+    return ret
 
 
 def cmd_unpack(config, args):
     settings = config['settings']
     packer = ArchivePacker(settings)
+    make_dir_path(args.destdir)
     packer.unpack(args.file, args.destdir)
 
 
@@ -486,14 +515,14 @@ def _setup():
     parser.set_defaults(func=cmd_ls)
 
     parser = group.add_parser('retrieve',
-            help='download an offsite archive to the specified directory')
+            help='download offsite archives to the specified directory')
     parser.set_defaults(func=cmd_retrieve)
     parser.add_argument('snapshot',
             help='snapshot name')
-    parser.add_argument('unit',
-            help='unit name')
     parser.add_argument('destdir', metavar='dest-dir',
             help='destination directory')
+    parser.add_argument('unit',
+            help='unit name', nargs='+')
 
     parser = group.add_parser('unpack',
             help='unpack a downloaded archive to the specified directory')

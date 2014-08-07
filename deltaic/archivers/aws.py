@@ -27,7 +27,9 @@ from datetime import datetime, timedelta
 import dateutil.parser
 from dateutil.tz import tzutc
 import os
+from Queue import Queue
 import sys
+import threading
 import time
 
 from ..util import humanize_size
@@ -91,7 +93,6 @@ class AWSArchiver(Archiver):
         return datetime.now(tz=tzutc())
 
     def _wait_for_job(self, job):
-        print 'Wait 3-5 hours...'
         while True:
             if self._vault.get_job(job.id).completed:
                 return
@@ -177,24 +178,59 @@ class AWSArchiver(Archiver):
             self._vault.delete_archive(aid)
             raise
 
-    def download_archive(self, set_name, archive_name, fh):
-        item_name = self._make_archive_item_name(set_name, archive_name)
-        metadata = self._domain.get_item(item_name, consistent_read=True)
-        if not metadata:
-            return None
+    def download_archives(self, set_name, archive_list):
+        # Collect metadata
+        archive_names = []
+        archive_paths = {}	# archive_name -> archive_path
+        archive_metadata = {}	# archive_name -> metadata
+        total_size = 0
+        for archive_name, archive_path in archive_list:
+            item_name = self._make_archive_item_name(set_name, archive_name)
+            metadata = self._domain.get_item(item_name, consistent_read=True)
+            if metadata:
+                archive_names.append(archive_name)
+                archive_paths[archive_name] = archive_path
+                archive_metadata[archive_name] = metadata
+                total_size += int(metadata['size'])
+            else:
+                yield (archive_name, ValueError('No such archive'))
+
         # Give the user a chance to cancel before they are charged.
-        size = humanize_size(int(metadata['size']))
-        print 'Going to retrieve %s of data.' % size
+        print 'Going to retrieve %s of data.' % humanize_size(total_size)
         for remaining in range(self.RETRIEVAL_DELAY, -1, -1):
             print ('\rStarting in %d seconds. ' % remaining),
             sys.stdout.flush()
             if remaining:
                 time.sleep(1)
         print '\nRetrieving.'
-        job = self._vault.retrieve_archive(metadata['aws-aid'])
-        self._wait_for_job(job)
-        job.download_to_fileobj(fh)
-        return dict(metadata)
+
+        # Launch retrievals.
+        finished_queue = Queue()
+        for archive_name in archive_names:
+            metadata = archive_metadata[archive_name]
+            job = self._vault.retrieve_archive(metadata['aws-aid'])
+            args = (finished_queue, archive_name, job,
+                    archive_paths[archive_name])
+            threading.Thread(target=self._finish_download, args=args).start()
+
+        # Wait for completion.
+        for _ in range(len(archive_names)):
+            archive_name, exception = finished_queue.get()
+            if exception:
+                yield (archive_name, exception)
+            else:
+                yield (archive_name, archive_metadata[archive_name])
+
+    def _finish_download(self, queue, archive_name, job, local_path):
+        # Thread function
+        try:
+            self._wait_for_job(job)
+            fd = os.open(local_path, os.O_WRONLY | os.O_CREAT, 0666)
+            with os.fdopen(fd, 'w') as fh:
+                job.download_to_fileobj(fh)
+            queue.put((archive_name, None))
+        except Exception, e:
+            queue.put((archive_name, e))
 
     def resync(self):
         # Delete archives without associated metadata.
