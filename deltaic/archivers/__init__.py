@@ -169,7 +169,8 @@ class ArchivePacker(object):
             sha256=hash.hexdigest(),
         )
 
-    def unpack(self, in_file, info, out_root):
+    def unpack(self, in_file, out_root):
+        info = ArchiveInfo.from_file(in_file)
         if info.encryption != self.encryption:
             # If the archive server is compromised, don't allow it to bypass
             # signature checking by replacing the archive and changing
@@ -303,12 +304,13 @@ class _Archive(object):
             if fh.tell() != int(metadata['size']):
                 raise IOError('Size mismatch')
             # Defer digest/signature checking until unpack
-        return (out_path, ArchiveInfo(
+        ArchiveInfo(
             compression=metadata['compression'],
             encryption=metadata['encryption'],
             size=int(metadata['size']),
             sha256=metadata['sha256'],
-        ))
+        ).to_file(out_path)
+        return out_path
 
 
 def archive_unit(settings, archive, snapshot_root):
@@ -428,15 +430,13 @@ def cmd_retrieve(config, args):
     archiver = Archiver.get_archiver(settings, args.profile)
     set = SnapshotArchiveSet(archiver, Snapshot(args.snapshot))
     archive = set.get_archive(args.unit)
-    out_path, info = archive.retrieve(args.destdir)
-    info.to_file(out_path)
+    archive.retrieve(args.destdir)
 
 
 def cmd_unpack(config, args):
     settings = config['settings']
     packer = ArchivePacker(settings)
-    info = ArchiveInfo.from_file(args.file)
-    packer.unpack(args.file, info, args.destdir)
+    packer.unpack(args.file, args.destdir)
 
 
 def cmd_prune(config, args):
