@@ -52,7 +52,7 @@ def _conditional_check():
 
 class AWSArchiver(Archiver):
     LABEL = 'aws'
-    UPLOAD_PART_SIZE = 64 << 20
+    CHUNK_SIZE = 32 << 20
     RETRIEVAL_DELAY = 10
     JOB_CHECK_INTERVAL = 60
 
@@ -156,7 +156,7 @@ class AWSArchiver(Archiver):
 
     def upload_archive(self, set_name, archive_name, metadata, local_path):
         aid = self._vault.concurrent_create_archive_from_file(local_path,
-                None, part_size=self.UPLOAD_PART_SIZE)
+                None, part_size=self.CHUNK_SIZE)
         try:
             metadata = dict(metadata)
             metadata.update({
@@ -227,7 +227,7 @@ class AWSArchiver(Archiver):
             self._wait_for_job(job)
             fd = os.open(local_path, os.O_WRONLY | os.O_CREAT, 0666)
             with os.fdopen(fd, 'w') as fh:
-                job.download_to_fileobj(fh)
+                job.download_to_fileobj(fh, chunk_size=self.CHUNK_SIZE)
             queue.put((archive_name, None))
         except Exception, e:
             queue.put((archive_name, e))
