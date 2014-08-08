@@ -196,13 +196,14 @@ class AWSArchiver(Archiver):
                 yield (archive_name, ValueError('No such archive'))
 
         # Give the user a chance to cancel before they are charged.
-        print 'Going to retrieve %s of data.' % humanize_size(total_size)
+        print >>sys.stderr, 'Going to retrieve %s of data.' % (
+                humanize_size(total_size))
         for remaining in range(self.RETRIEVAL_DELAY, -1, -1):
-            print ('\rStarting in %d seconds. ' % remaining),
+            print >>sys.stderr, ('\rStarting in %d seconds. ' % remaining),
             sys.stdout.flush()
             if remaining:
                 time.sleep(1)
-        print '\nRetrieving.'
+        print >>sys.stderr, '\nRetrieving.'
 
         # Launch retrievals.
         finished_queue = Queue()
