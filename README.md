@@ -179,12 +179,12 @@ RBD image.
 buckets using the credentials of the bucket owner, which it obtains using
 `radosgw-admin`.
 
-`rgw` backs up object data, metadata, and ACLs, and bucket ACLs.  If an
-object has not changed since the last backup, `rgw` assumes that its ACLs
-have not changed either, except during a periodic scrub.  If manually
-backing up an individual bucket, pass `--scrub-acls` to
-`deltaic rgw backup` to override this assumption and re-download ACLs
-for all objects.
+`rgw` backs up object data, metadata, and ACLs, and bucket ACLs and CORS
+configuration.  If an object has not changed since the last backup, `rgw`
+assumes that its ACLs have not changed either, except during a periodic
+scrub.  If manually backing up an individual bucket, pass `--scrub-acls` to
+`deltaic rgw backup` to override this assumption and re-download ACLs for
+all objects.
 
 #### Requirements
 

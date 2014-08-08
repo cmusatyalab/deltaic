@@ -240,6 +240,17 @@ def sync_bucket(server, bucket_name, root_dir, workers, scrub, secure):
     # Bucket metadata
     update_file(key_name_to_path(root_dir, 'bucket', 'A'),
             bucket.get_xml_acl())
+    path = key_name_to_path(root_dir, 'bucket', 'C')
+    try:
+        update_file(path, bucket.get_cors_xml())
+    except boto.exception.S3ResponseError, e:
+        if e.status == 404:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        else:
+            raise
 
     # Collect garbage
     def handle_err(err):
@@ -254,8 +265,8 @@ def sync_bucket(server, bucket_name, root_dir, workers, scrub, secure):
                 # Delete files without type codes
                 delete = True
             else:
-                if code == 'A':
-                    # Bucket ACL
+                if code in ('A', 'C'):
+                    # Bucket metadata
                     delete = False
                 elif code == 't':
                     # Leftover temporary file
@@ -342,6 +353,10 @@ def restore_bucket(root_dir, server, dest_bucket_name, force, secure, workers):
 
     # Set bucket metadata
     bucket.set_xml_acl(bucket_acl)
+    cors_path = key_name_to_path(root_dir, 'bucket', 'C')
+    if os.path.exists(cors_path):
+        with open(cors_path) as fh:
+            bucket.set_cors_xml(fh.read())
 
     # Upload keys
     pool = Pool(workers, upload_pool_init, [root_dir, server,
