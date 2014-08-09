@@ -347,7 +347,7 @@ class AWSArchiver(Archiver):
                     break
 
                 # Start the job.
-                _debug('Downloading', request_size, 'bytes of', state.name,
+                _debug('Requesting', request_size, 'bytes of', state.name,
                         'at', state.offset)
                 byte_range = '%d-%d' % (state.offset,
                         state.offset + request_size - 1)
@@ -398,10 +398,10 @@ class AWSArchiver(Archiver):
                     if not buf:
                         break
                     fh.write(buf)
-            _debug('Finished request of', archive_name, 'at offset', offset)
+            _debug('Finished request of', archive_name, 'at', offset)
             queue.put((archive_name, None))
         except Exception, e:
-            _debug('Failed request of', archive_name, 'at offset', offset,
+            _debug('Failed request of', archive_name, 'at', offset,
                     '-->', e)
             queue.put((archive_name, e))
 
