@@ -273,7 +273,7 @@ class AWSArchiver(Archiver):
 
     def upload_archive(self, set_name, archive_name, metadata, local_path):
         aid = self._vault.concurrent_create_archive_from_file(local_path,
-                None, part_size=self.CHUNK_SIZE)
+                ' '.join([set_name, archive_name]), part_size=self.CHUNK_SIZE)
         try:
             metadata = dict(metadata)
             metadata.update({
