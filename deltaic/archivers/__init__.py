@@ -18,6 +18,7 @@
 #
 
 from __future__ import division
+from collections import deque
 from hashlib import sha256
 import os
 import subprocess
@@ -65,7 +66,7 @@ class Archiver(object):
     def upload_archive(self, set_name, archive_name, metadata, local_path):
         raise NotImplementedError
 
-    def download_archives(self, set_name, archive_list):
+    def download_archives(self, set_name, archive_list, max_rate=None):
         # archive_list is a sequence of (archive_name, local_path) tuples.
         # Returns an iterator yielding one of:
         #   (archive_name, metadata)  -> Success
@@ -81,6 +82,73 @@ class Archiver(object):
     def report_cost(self):
         # Print report on storage costs to stdout.
         raise NotImplementedError
+
+
+class DownloadState(object):
+    # Retrieval helper class for Archiver subclasses.
+
+    def __init__(self, items):
+        # items is an iterable of (name, size) tuples.
+        self.name = None
+        self.offset = 0
+        self.remaining = 0
+        self.size = 0
+        self.requests_done = False
+        self.done = False
+
+        self._pending = deque(items)
+        self._outstanding_requests = {}  # name -> count
+        self._failed = set()  # name
+        self._next_item()
+
+    def _next_item(self):
+        try:
+            self.name, self.size = self._pending.popleft()
+            self.offset = 0
+            self.remaining = self.size
+            self._outstanding_requests[self.name] = 0
+        except IndexError:
+            # Out of items.
+            self.name = None
+            self.offset = self.size = self.remaining = 0
+            self.requests_done = True
+
+    def requested(self, count):
+        # We just made a retrieval request of @count bytes.
+        assert count <= self.remaining
+        self.offset += count
+        self.remaining -= count
+        self._outstanding_requests[self.name] += 1
+        if self.remaining == 0:
+            self._next_item()
+
+    def response_failed(self, name):
+        # We just processed one failed response for @name.  Mark @name as
+        # failed, skip the rest of the item if not completely requested,
+        # and return True if this is its first failure.
+        assert self._outstanding_requests.get(name, 0) > 0
+        ret = name not in self._failed
+        self._failed.add(name)
+        if name == self.name:
+            self._next_item()
+        self.response_processed(name)
+        return ret
+
+    def response_processed(self, name):
+        # We just processed one successful response for @name.  Return True
+        # if @name is complete and successful, False otherwise.
+        assert self._outstanding_requests.get(name, 0) > 0
+        self._outstanding_requests[name] -= 1
+        if name != self.name and self._outstanding_requests[name] == 0:
+            # Done with @name.
+            del self._outstanding_requests[name]
+            if self.name is None and not self._outstanding_requests:
+                self.done = True
+            ret = name not in self._failed
+            self._failed.discard(name)
+            return ret
+        else:
+            return False
 
 
 class ArchiveInfo(object):
@@ -301,7 +369,7 @@ class SnapshotArchiveSet(object):
     def mark_complete(self):
         self.archiver.complete_set(self.snapshot.name)
 
-    def retrieve_archives(self, out_dir, archives):
+    def retrieve_archives(self, out_dir, archives, max_rate=None):
         # Returns an iterator yielding one of:
         #   (archive, file_path) -> Success
         #   (archive, exception) -> Failure
@@ -322,7 +390,7 @@ class SnapshotArchiveSet(object):
 
         # Retrieve
         for archive_name, result in self.archiver.download_archives(
-                self.snapshot.name, archive_list):
+                self.snapshot.name, archive_list, max_rate=max_rate):
             archive = archive_lookup[archive_name]
             out_path = archive_paths[archive]
             if not isinstance(result, Exception):
@@ -477,9 +545,12 @@ def cmd_retrieve(config, args):
     archiver = Archiver.get_archiver(settings, args.profile)
     set = SnapshotArchiveSet(archiver, Snapshot(args.snapshot))
     archives = [set.get_archive(unit) for unit in args.unit]
+    max_rate = (int(args.max_rate * (1 << 30)) if args.max_rate is not None
+            else None)
     make_dir_path(args.destdir)
     ret = 0
-    for archive, result in set.retrieve_archives(args.destdir, archives):
+    for archive, result in set.retrieve_archives(args.destdir, archives,
+            max_rate=max_rate):
         if isinstance(result, Exception):
             print >>sys.stderr, '%s: %s' % (archive.unit_name, result)
             ret = 1
@@ -550,6 +621,8 @@ def _setup():
             help='destination directory')
     parser.add_argument('unit',
             help='unit name', nargs='+')
+    parser.add_argument('-r', '--max-rate', metavar='RATE', type=float,
+            help='maximum retrieval rate in (possibly fractional) GiB/hour')
 
     parser = group.add_parser('unpack',
             help='unpack a downloaded archive to the specified directory')
