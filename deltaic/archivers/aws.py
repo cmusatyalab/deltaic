@@ -444,11 +444,13 @@ class AWSArchiver(Archiver):
         msg = '''
 The %(total_size)s currently in storage costs $%(storage_cost).2f/month.
 
-You can retrieve around %(free_transfer)s for free today.  If you retrieve more than
-that, you must carefully watch your retrieval rate.  Each additional GB/hour
-will cost $%(transfer_cost_gb).2f, but is then available for the whole month at no additional
-charge.  The maximum retrieval rate this month has been %(max_transfer_rate)s/hour, but
-that includes any retrievals performed for free.
+You can retrieve around %(free_transfer)s for free today (in UTC), provided that your
+retrievals occur at a constant rate during all hours in which you are
+retrieving.  If you exceed this amount, your bill will be determined by your
+maximum hourly retrieval rate for the month.  Each additional GB/hour of
+retrieval bandwidth costs $%(transfer_cost_gb).2f, but is then available for the whole month at
+no additional charge.  The maximum retrieval rate this month has been
+%(max_transfer_rate)s/hour.
 '''.strip()
 
         total_size = sum(metadata['size']
