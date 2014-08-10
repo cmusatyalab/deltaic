@@ -648,7 +648,7 @@ def _setup():
     parser.set_defaults(func=cmd_resync)
 
     parser = group.add_parser('unit',
-            help='create and upload a single offsite archive')
+            help='low-level command to upload a single offsite archive')
     parser.set_defaults(func=cmd_unit)
     parser.add_argument('snapshot',
             help='snapshot name')
