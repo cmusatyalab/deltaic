@@ -65,7 +65,7 @@ class AWSArchiver(Archiver):
     JOB_CHECK_INTERVAL = 60
     DEFAULT_RETRIEVAL_RATE = 1 << 30
     BANDWIDTH_ITEM = '/bandwidth'
-    TIMESLOT_START_SLOP = timedelta(minutes=2)
+    TIMESLOT_SLOP = timedelta(minutes=2)
 
     # Glacier billing parameters
     MONTHLY_FREE_RETRIEVAL_FRACTION = .05
@@ -161,8 +161,19 @@ class AWSArchiver(Archiver):
         # Get item
         last_serial, data = self._get_bandwidth_item()
 
-        # Parse into timeslots
+        # Avoid allocating during the TIMESLOT_SLOP window around the
+        # timeslot boundary, to avoid double-allocation within a slot
+        # due to clock skew.
         cur_slot = self._now(hour=True)
+        now = self._now()
+        if now - cur_slot < self.TIMESLOT_SLOP:
+            _debug('Refusing to allocate near beginning of timeslot')
+            return (cur_slot - timedelta(hours=1), 0)
+        if cur_slot + timedelta(hours=1) - now < self.TIMESLOT_SLOP:
+            _debug('Refusing to allocate near end of timeslot')
+            return (cur_slot, 0)
+
+        # Parse item into timeslots
         timeslot_attrs = ['bandwidth-%s' %
                 (cur_slot + timedelta(hours=n)).isoformat()
                 for n in range(self.BILLING_RETRIEVAL_HOURS)]
@@ -206,8 +217,7 @@ class AWSArchiver(Archiver):
 
     @classmethod
     def _seconds_to_next_timeslot(cls, timeslot):
-        resume_time = (timeslot + timedelta(hours=1) +
-                cls.TIMESLOT_START_SLOP)
+        resume_time = timeslot + timedelta(hours=1) + cls.TIMESLOT_SLOP
         wait_time = resume_time - cls._now()
         if wait_time > timedelta(0):
             return wait_time.seconds + .000001 * wait_time.microseconds
