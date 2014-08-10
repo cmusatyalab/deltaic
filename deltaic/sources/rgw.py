@@ -295,12 +295,29 @@ def sync_bucket(server, bucket_name, root_dir, workers, scrub, secure):
     return not warned
 
 
-def upload_pool_init(root_dir_, server, bucket_name, access_key, secret_key,
-        secure):
-    global root_dir, upload_bucket
+def upload_pool_init(root_dir_, server, bucket_name, secure):
+    global root_dir, upload_server, upload_bucket_name, upload_secure
+    global upload_buckets
     root_dir = root_dir_
-    conn = connect(server, access_key, secret_key, secure=secure)
-    upload_bucket = conn.get_bucket(bucket_name)
+    upload_server = server
+    upload_bucket_name = bucket_name
+    upload_secure = secure
+    upload_buckets = {}  # owner -> bucket
+
+
+def get_owner_name(acl_xml):
+    return ET.fromstring(acl_xml).find('{%(ns)s}Owner/{%(ns)s}ID' %
+            {'ns': S3_NAMESPACE}).text
+
+
+def upload_get_bucket(owner):
+    if owner not in upload_buckets:
+        access_key, secret_key = get_user_credentials(owner)
+        conn = connect(upload_server, access_key, secret_key,
+                secure=upload_secure)
+        upload_buckets[owner] = conn.get_bucket(upload_bucket_name,
+                validate=False)
+    return upload_buckets[owner]
 
 
 def upload_key(args):
@@ -309,8 +326,13 @@ def upload_key(args):
     in_meta = key_name_to_path(root_dir, key_name, 'm')
     in_acl = key_name_to_path(root_dir, key_name, 'a')
 
-    key = upload_bucket.new_key(key_name)
+    key = None
     try:
+        with open(in_acl, 'rb') as fh:
+            key_acl = fh.read()
+        owner = get_owner_name(key_acl)
+        key = upload_get_bucket(owner).new_key(key_name)
+
         with open(in_meta, 'rb') as fh:
             meta = json.load(fh)
         key.metadata.update(meta['metadata'])
@@ -318,11 +340,11 @@ def upload_key(args):
                 if k.lower() in KEY_UPLOAD_HEADERS)
         with open(in_data, 'rb') as fh:
             key.set_contents_from_file(fh, headers=headers)
-        with open(in_acl, 'rb') as fh:
-            key.set_xml_acl(fh.read())
+        key.set_xml_acl(key_acl)
         return (key_name, None)
     except Exception, e:
-        key.delete()
+        if key:
+            key.delete()
         if isinstance(e, boto.exception.BotoServerError):
             e = e.error_code
         return (key_name, "Couldn't upload %s: %s" % (key_name, e))
@@ -337,8 +359,7 @@ def restore_bucket(root_dir, server, dest_bucket_name, force, secure, workers):
     # Get bucket ACL and owner
     with open(bucket_acl_path) as fh:
         bucket_acl = fh.read()
-    owner = ET.fromstring(bucket_acl).find('{%(ns)s}Owner/{%(ns)s}ID' %
-            {'ns': S3_NAMESPACE}).text
+    owner = get_owner_name(bucket_acl)
 
     # Connect
     access_key, secret_key = get_user_credentials(owner)
@@ -360,7 +381,7 @@ def restore_bucket(root_dir, server, dest_bucket_name, force, secure, workers):
 
     # Upload keys
     pool = Pool(workers, upload_pool_init, [root_dir, server,
-            dest_bucket_name, access_key, secret_key, secure])
+            dest_bucket_name, secure])
     iter = enumerate_keys_from_directory(root_dir)
     for path, error in pool.imap_unordered(upload_key, iter):
         if error:
