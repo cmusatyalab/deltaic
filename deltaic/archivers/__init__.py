@@ -630,7 +630,9 @@ def _setup():
             help='maximum retrieval rate in (possibly fractional) GiB/hour')
 
     parser = group.add_parser('unpack',
-            help='unpack downloaded archives to the specified directory')
+            help='unpack downloaded archives to the specified directory',
+            description='To avoid repeated passphrase prompts, ensure ' +
+            'gpg-agent is running in your session.')
     parser.set_defaults(func=cmd_unpack)
     parser.add_argument('destdir', metavar='dest-dir',
             help='destination root directory')
