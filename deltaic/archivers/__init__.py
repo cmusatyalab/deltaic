@@ -548,6 +548,8 @@ def cmd_retrieve(config, args):
     max_rate = (int(args.max_rate * (1 << 30)) if args.max_rate is not None
             else None)
     make_dir_path(args.destdir)
+    if not os.path.isdir(args.destdir):
+        raise IOError('Destination is not a directory')
     ret = 0
     for archive, result in set.retrieve_archives(args.destdir, archives,
             max_rate=max_rate):
@@ -563,6 +565,8 @@ def cmd_unpack(config, args):
     settings = config['settings']
     packer = ArchivePacker(settings)
     make_dir_path(args.destdir)
+    if not os.path.isdir(args.destdir):
+        raise IOError('Destination is not a directory')
     packer.unpack(args.file, args.destdir)
 
 
