@@ -567,7 +567,8 @@ def cmd_unpack(config, args):
     make_dir_path(args.destdir)
     if not os.path.isdir(args.destdir):
         raise IOError('Destination is not a directory')
-    packer.unpack(args.file, args.destdir)
+    for file in args.file:
+        packer.unpack(file, args.destdir)
 
 
 def cmd_prune(config, args):
@@ -623,18 +624,18 @@ def _setup():
             help='snapshot name')
     parser.add_argument('destdir', metavar='dest-dir',
             help='destination directory')
-    parser.add_argument('unit',
-            help='unit name', nargs='+')
+    parser.add_argument('unit', nargs='+',
+            help='unit name')
     parser.add_argument('-r', '--max-rate', metavar='RATE', type=float,
             help='maximum retrieval rate in (possibly fractional) GiB/hour')
 
     parser = group.add_parser('unpack',
-            help='unpack a downloaded archive to the specified directory')
+            help='unpack downloaded archives to the specified directory')
     parser.set_defaults(func=cmd_unpack)
-    parser.add_argument('file',
-            help='archive file')
     parser.add_argument('destdir', metavar='dest-dir',
             help='destination root directory')
+    parser.add_argument('file', nargs='+',
+            help='archive file')
 
     parser = group.add_parser('prune',
             help='delete old offsite archives')
