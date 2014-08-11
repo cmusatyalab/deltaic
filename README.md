@@ -222,3 +222,93 @@ filesystem to a destination host.  This command runs rsync with the
 necessary options to restore all backed-up metadata.  Additional options
 specified to the restore command (such as `--delete`) will be forwarded to
 rsync.
+
+
+## Archiving
+
+Deltaic can archive a snapshot into an archive set stored in off-server
+(presumably offsite) storage.  Each unit (`rbd` image, `rgw` bucket, `rsync`
+machine, etc.) is separately packaged into a tarball, optionally encrypted
+with GPG, and uploaded to a remote archive.
+
+### Requirements
+
+*   A scratch filesystem for temporary data
+*   A version of GNU tar with extended attribute support
+*   GPG 2.x, if archives should be encrypted
+
+### Setting up
+
+1.  Create a filesystem (perhaps backed by the thin pool) for temporary data.
+    For example:
+
+    ```shell
+    lvcreate -V20t -T backups/pool -n spool
+    mkfs.ext4 -m 0 -E lazy_itable_init /dev/backups/spool
+    mkdir /srv/spool
+    mount /dev/backups/spool /srv/spool
+    chown user.user /srv/spool
+    chmod 700 /srv/spool
+    echo "/dev/backups/spool /srv/spool ext4 discard,noatime 0 2" >> /etc/fstab
+    ```
+
+1.  If archives should be encrypted, use `gpg2 --gen-key` to generate one
+    GPG signing key and one or more additional GPG keys for encryption.  The
+    signing key is used during archive creation and must not require a
+    passphrase.  Any of the encryption keys can be used during restore to
+    decrypt the archives; they should be protected with a passphrase. 
+    Retain copies of all the keys offline in a safe place.
+
+1.  Configure archive settings in `deltaic.conf`.  See
+    [example-config.yaml](example-config.yaml) for the available settings. 
+    Here is an example config fragment for storing encrypted archives to AWS:
+
+    ```yaml
+    settings:
+      archive-spool: /srv/spool
+      archive-gpg-signing-key: [signing key fingerprint]
+      archive-gpg-recipients:
+        - [encryption key fingerprint]
+      archivers:
+        default:
+          archiver: aws
+          aws-access-key-id: [access key ID]
+          aws-secret-access-key: [secret access key]
+          aws-region: us-east-1
+          aws-namespace: [name of vault and database]
+          aws-storage-cost: [dollars per GB-month in aws-region, if not 0.01]
+    ```
+
+1.  Enable the commented-out cron jobs in the crontab created by
+    `deltaic mkconf crontab` and configure their schedules as desired.
+
+### Restoring
+
+Restoring data requires two separate commands: `deltaic archive retrieve` to
+fetch an archive and `deltaic archive unpack` to unpack it.  The `unpack`
+destination directory can be the backup root or a different directory.
+
+It is possible to retrieve and unpack archives whose units are not listed in
+the config file.  This makes it possible to perform disaster recovery using
+a reconstructed config file containing only critical system-wide
+configuration such as GPG keys and AWS credentials.
+
+When setting up a new Deltaic installation for disaster recovery, ensure
+that you do not enable pruning of old archive sets before retrieving all
+the archives you need.
+
+### Archivers
+
+#### `aws`: Amazon Web Services
+
+`aws` stores archives in Amazon Glacier and archive metadata in Amazon
+SimpleDB.  To avoid Glacier early-deletion penalties, archive sets are
+protected from pruning for the first 90 days after uploading.
+
+Amazon Glacier bills for retrievals based on the maximum hourly bandwidth
+used during a calendar month.  Therefore, retrieving a large amount of data
+in a short time can be very expensive.  The most cost-effective way to
+schedule your retrievals is to retrieve at a consistent rate over the course
+of a month.  You can specify a retrieval rate with the `-r` option to
+`deltaic archive retrieve`; the default is 1 GiB/hour.  Use
+`deltaic archive cost` to help select a retrieval rate.
