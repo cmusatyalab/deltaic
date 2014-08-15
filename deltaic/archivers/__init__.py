@@ -216,7 +216,7 @@ class ArchivePacker(object):
         return [self._gpg, '--batch', '--no-tty', '--no-options',
                 '--personal-cipher-preferences', 'AES256,AES192,AES',
                 '--personal-digest-preferences', 'SHA256,SHA1',
-                '--personal-compress-preferences', 'none'] + args
+                '--personal-compress-preferences', 'Uncompressed'] + args
 
     def pack(self, snapshot_name, snapshot_root, unit_name, compression,
             out_fh):
