@@ -235,6 +235,7 @@ with GPG, and uploaded to a remote archive.
 
 *   A scratch filesystem for temporary data
 *   A version of GNU tar with extended attribute support
+*   lzop, if using LZO compression
 *   GPG 2.x, if archives should be encrypted
 
 ### Setting up

@@ -144,6 +144,9 @@ settings:
       # Storage cost per GB-month in selected region
       # [default: 0.01]
       aws-storage-cost: 0.012
+      # Default archive compression (gzip, lzop, none)
+      # [default: gzip]
+      compression: lzop
       # Number of snapshots to keep archived
       # [default: 1]
       keep-count: 1
@@ -225,3 +228,13 @@ rsync:
     # [default: no patterns]
     exclude:
       - /var/lib/mysql/*
+
+## Unit configuration for archiver profiles
+archivers:
+  # Default profile
+  default:
+    # Unit name
+    rgw/bucket1:
+      # Archive compression (gzip, lzop, none)
+      # [default: value of compression setting in archiver profile]
+      compression: lzop

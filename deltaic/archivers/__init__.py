@@ -199,8 +199,18 @@ class ArchivePacker(object):
             # stdin is not a tty
             pass
 
-        self.compression = 'gzip'
         self.encryption = 'gpg' if self._gpg_recipients else 'none'
+
+    @classmethod
+    def _compress_option(self, compression):
+        if compression == 'gzip':
+            return '--gzip'
+        elif compression == 'lzop':
+            return '--lzop'
+        elif compression == 'none':
+            return None
+        else:
+            raise ValueError('Unknown compression algorithm')
 
     def _gpg_cmd(self, args):
         return [self._gpg, '--batch', '--no-tty', '--no-options',
@@ -208,12 +218,19 @@ class ArchivePacker(object):
                 '--personal-digest-preferences', 'SHA256,SHA1',
                 '--personal-compress-preferences', 'none'] + args
 
-    def pack(self, snapshot_name, snapshot_root, unit_name, out_fh):
+    def pack(self, snapshot_name, snapshot_root, unit_name, compression,
+            out_fh):
         cmds = []
-        cmds.append([self._tar, 'cz', '--force-local', '--format=gnu',
-                '--sparse', '--acls', '--selinux', '--xattrs',
+
+        tar = [self._tar, 'c', '--force-local', '--format=gnu', '--sparse',
+                '--acls', '--selinux', '--xattrs',
                 '-V', '%s %s' % (snapshot_name, unit_name),
-                '-C', snapshot_root, unit_name])
+                '-C', snapshot_root, unit_name]
+        compress_opt = self._compress_option(compression)
+        if compress_opt:
+            tar.append(compress_opt)
+        cmds.append(tar)
+
         if self.encryption == 'gpg':
             args = ['-seu', self._gpg_signing_key]
             for recipient in self._gpg_recipients:
@@ -233,7 +250,7 @@ class ArchivePacker(object):
                     out_fh.write(buf)
 
         return ArchiveInfo(
-            compression=self.compression,
+            compression=compression,
             encryption=self.encryption,
             size=out_fh.tell(),
             sha256=hash.hexdigest(),
@@ -247,6 +264,7 @@ class ArchivePacker(object):
             # the encryption field to "none"
             raise ValueError("Archive encryption doesn't match " +
                     "local settings; check metadata integrity")
+        compress_opt = self._compress_option(info.compression)
 
         fh = open(in_file, 'rb')
         try:
@@ -307,9 +325,11 @@ class ArchivePacker(object):
             else:
                 raise ValueError('Unknown encryption method')
 
-            Pipeline([[self._tar, 'xz', '--force-local', '--acls',
-                    '--selinux', '--xattrs', '-C', out_root]],
-                    in_fh=fh).close()
+            tar = [self._tar, 'x', '--force-local', '--acls', '--selinux',
+                    '--xattrs', '-C', out_root]
+            if compress_opt:
+                tar.append(compress_opt)
+            Pipeline([tar], in_fh=fh).close()
         finally:
             fh.close()
 
@@ -428,12 +448,19 @@ class _Archive(object):
                 metadata, in_path)
 
 
-def archive_unit(settings, archive, snapshot_root):
+def archive_unit(config, archive, snapshot_root):
+    settings = config['settings']
+    profile = settings['archivers'][archive.archiver.profile_name]
+    manifest = config.get('archivers', {}).get(archive.archiver.profile_name,
+            {})
+    compression = manifest.get(archive.unit_name, {}).get('compression')
+    if not compression:
+        compression = profile.get('compression', 'gzip')
     spool_dir = settings['archive-spool']
     packer = ArchivePacker(settings)
     with NamedTemporaryFile(dir=spool_dir, prefix='archive-') as out_fh:
         info = packer.pack(archive.snapshot.name, snapshot_root,
-                archive.unit_name, out_fh)
+                archive.unit_name, compression, out_fh)
         out_fh.flush()
         archive.store(out_fh.name, info)
 
@@ -588,7 +615,7 @@ def cmd_unit(config, args):
     archiver = Archiver.get_archiver(settings, args.profile)
     set = SnapshotArchiveSet(archiver, Snapshot(args.snapshot))
     archive = set.get_archive(args.unit)
-    archive_unit(settings, archive, args.mountpoint)
+    archive_unit(config, archive, args.mountpoint)
 
 
 def _setup():
