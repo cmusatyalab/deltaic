@@ -60,7 +60,7 @@ def _debug(*args):
 
 class AWSArchiver(Archiver):
     LABEL = 'aws'
-    CHUNK_SIZE = 32 << 20
+    CHUNK_SIZE = 64 << 20
     RETRIEVAL_DELAY = 10
     JOB_CHECK_INTERVAL = 60
     DEFAULT_RETRIEVAL_RATE = 1 << 30
