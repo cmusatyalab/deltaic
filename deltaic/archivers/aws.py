@@ -282,8 +282,13 @@ class AWSArchiver(Archiver):
                 for res in self._domain.select(qstr, consistent_read=True))
 
     def upload_archive(self, set_name, archive_name, metadata, local_path):
+        # We don't want to upload concurrently because the chunk size is
+        # automatically scaled to fit the archive within 10k parts, and we
+        # don't want to consume all of RAM.  The concurrent uploader includes
+        # retry logic that we want to reuse, so run it with only 1 thread.
         aid = self._vault.concurrent_create_archive_from_file(local_path,
-                ' '.join([set_name, archive_name]), part_size=self.CHUNK_SIZE)
+                ' '.join([set_name, archive_name]), part_size=self.CHUNK_SIZE,
+                num_threads=1)
         try:
             metadata = dict(metadata)
             metadata.update({
