@@ -259,7 +259,7 @@ def sync_backup_volume(host, volume, root_dir, incremental=False,
 
     subprocess.check_call(volutil_cmd(host, 'ancient', [backup_id],
             volutil=volutil), stderr=get_err_stream(verbose))
-    root_xattrs.update(ATTR_INCREMENTAL, '')
+    root_xattrs.update(ATTR_INCREMENTAL, 'true')
 
 
 def get_relroot(hostname, volume):
