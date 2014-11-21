@@ -265,12 +265,17 @@ class AWSArchiver(Archiver):
         qstr = ('select `aws-archive`, `aws-aid` from `%s` where ' +
                 '`aws-set` = "%s" and `aws-archive` is not null') % (
                 self._domain.name, self._quote_value(set_name))
-        for res in self._domain.select(qstr, consistent_read=True):
+        for res in list(self._domain.select(qstr, consistent_read=True)):
             item_name = self._make_archive_item_name(set_name,
                     res['aws-archive'])
             items[item_name] = None
             aids.append(res['aws-aid'])
-        self._domain.batch_delete_attributes(items)
+            if len(items) == 25:
+                # Maximum size for one request
+                self._domain.batch_delete_attributes(items)
+                items.clear()
+        if items:
+            self._domain.batch_delete_attributes(items)
         for aid in aids:
             self._vault.delete_archive(aid)
 
