@@ -241,7 +241,12 @@ def update_releases(repo, root_dir, scrub=False):
     # Releases response includes asset data, so cond_iter is safe
     release_iter = cond_iter(releases_dir, repo.iter_releases, scrub=scrub)
     for release in release_iter:
-        release_dir = make_dir_path(releases_dir, release.tag_name)
+        if release.tag_name is not None:
+            release_dir = make_dir_path(releases_dir, release.tag_name)
+        else:
+            # Draft release that hasn't been tagged yet
+            release_dir = make_dir_path(releases_dir,
+                    'untagged-%d' % release.id)
 
         # Metadata
         info = {
