@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014 Carnegie Mellon University
+# Copyright (c) 2014-2015 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -96,16 +96,12 @@ def try_unlink(path):
         pass
 
 
-class ComparingFile(object):
-    """A writable file-like object.  It doesn't actually write anything, but
-    instead compares its input to the file data at the specified path.
-    If we find a mismatch, we could fix it in-place in the original file,
-    but that would allow bugs in this class to produce silent data
-    corruption some weeks after an image or snapshot is first backed up.
-    Instead, we just complain by raising ValueError."""
+class ScrubbingFile(object):
+    """A writable file-like object that compares its input to the file data
+    at the specified path.  If we find a mismatch, fix it in-place."""
 
     def __init__(self, path):
-        self._fh = open(path, 'rb')
+        self._fh = open(path, 'r+b')
 
     def __enter__(self):
         return self
@@ -118,11 +114,12 @@ class ComparingFile(object):
         while start < len(buf):
             disk_buf = self._fh.read(min(BLOCKSIZE, len(buf) - start))
             count = len(disk_buf)
-            if disk_buf == '':
-                raise ValueError("Unexpected EOF at %d" % self._fh.tell())
-            if disk_buf != buf[start:start + count]:
-                raise ValueError("Data mismatch at %d" %
-                        (self._fh.tell() - count))
+            input_buf = buf[start:start + count]
+            if disk_buf != input_buf:
+                self._fh.seek(-count, 1)
+                print >>sys.stderr, "Fixing data mismatch at %d" % (
+                        self._fh.tell())
+                self._fh.write(input_buf)
             start += count
 
     def seek(self, offset, whence=0):
@@ -130,29 +127,14 @@ class ComparingFile(object):
 
     def tell(self):
         return self._fh.tell()
-        
+
     def truncate(self, len):
-        old_off = self._fh.tell()
-        try:
-            self._fh.seek(0, 2)
-            if len != self._fh.tell():
-                raise ValueError('Expected file length %d, found %d' %
-                        (len, self._fh.tell()))
-        finally:
-            self._fh.seek(old_off)
+        self._fh.truncate(len)
 
     def punch(self, offset, length):
         # deltaic.platform.punch will call this.
-        old_off = self._fh.tell()
-        try:
-            self._fh.seek(offset)
-            buf = '\0' * BLOCKSIZE
-            while length > 0:
-                count = min(BLOCKSIZE, length)
-                self.write(buf[:count])
-                length -= count
-        finally:
-            self._fh.seek(old_off)
+        # Just repunch the file rather than checking for zeroes.
+        punch(self._fh, offset, length)
 
     def close(self):
         self._fh.close()
@@ -236,7 +218,7 @@ def fetch_snapshot(pool, image, snapshot, path):
 
 def scrub_snapshot(pool, image, snapshot, path):
     proc = export_diff(pool, image, snapshot)
-    with ComparingFile(path) as ofh:
+    with ScrubbingFile(path) as ofh:
         unpack_diff(proc.stdout, ofh, verbose=False)
     if proc.wait():
         raise IOError('Export returned %d' % proc.returncode)
