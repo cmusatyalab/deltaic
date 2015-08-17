@@ -688,4 +688,4 @@ _setup()
 
 
 # Now import submodules that need these definitions
-from . import aws
+from . import aws, googledrive

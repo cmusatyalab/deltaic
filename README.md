@@ -313,3 +313,35 @@ schedule your retrievals is to retrieve at a consistent rate over the course
 of a month.  You can specify a retrieval rate with the `-r` option to
 `deltaic archive retrieve`; the default is 1 GiB/hour.  Use
 `deltaic archive cost` to help select a retrieval rate.
+
+#### `googledrive`: Google Drive
+
+`googledrive` stores archives and archive metadata in Google Drive.
+
+To use Google Drive you first need to create or select a project in the Google
+Developers Console and enable the Drive API.
+
+1. Go to the [Google Developers Console][https://console.developers.google.com].
+
+1. Select existing or create a new project.
+
+1. Under APIs & Auth, select APIs -> Drive API, enable API.
+
+1. Under APIs & Auth, select Credentials -> Create new Client ID
+  - Application type, Installed application
+  - At this point you might have to fill out the Consent Screen information
+  - Installed application type, Other
+
+1. Copy the Client ID and Client secret to `deltaic.conf`.
+    ```yaml
+      googledrive-client-id: [Client ID]
+      googledrive-client-secret: [Client secret]
+      archivers:
+        default:
+          archiver: googledrive
+    ```
+
+1. Run `deltaic googledrive auth ~/.cache/deltaic-googledrive-credentials.json`, and follow the prompts to obtain an authorization code. You can also use the 'googledrive-credentials-file' configuration option to choose a different name/location of the file.
+
+1. To test if the authentication tokens are working run `deltaic googledrive test`.
+
