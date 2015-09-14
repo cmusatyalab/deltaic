@@ -24,7 +24,7 @@ import sys
 import time
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 from oauth2client import client
 from oauth2client.file import Storage
 
@@ -55,7 +55,7 @@ def foreverholdyourpeace(message, delay=10, file=sys.stdout):
         file.flush()
         if remaining:
             time.sleep(1)
-    print >>file, '\r%s.                 '
+    print >>file, '\r%s.                 ' % message
 
 
 def _default_drive_credentials_path(settings):
@@ -126,10 +126,48 @@ def cmd_googledrive_rm(config, args):
     foreverholdyourpeace("Deleting %s (%s)" % (result['title'], args.fileid))
     service.files().delete(fileId=args.fileid).execute()
 
+class _PartialFile(object):
+    def __init__(self, f, start, length):
+        self._file = f
+
+        f.seek(0, os.SEEK_END)
+        self._size = f.tell()
+        self._length = min(length, self._size - start)
+
+        f.seek(start, os.SEEK_SET)
+        self._start = start
+        self._offset = 0
+
+    def read(self, n=-1):
+        if n == -1:
+            n = self._length - self._offset
+        if n < 0:
+            n = 0
+        buf = self._file.read(n)
+        self._offset += len(buf)
+        return buf
+
+    def tell(self):
+        return self._offset
+
+    def seek(self, offset, whence=os.SEEK_SET):
+        if whence == os.SEEK_SET:
+            self._offset = offset
+        elif whence == os.SEEK_CUR:
+            self._offset += offset
+        elif whence == os.SEEK_END:
+            self._offset = self._length + offset
+
+        if self._offset < 0:
+            self._offset = 0
+        if self._offset > self._length:
+            self._offset = self._length
+        self._file.seek(self._start + self._offset)
 
 class DriveArchiver(Archiver):
     LABEL = 'googledrive'
     MAX_FILESIZE = 5120 << 30       # Drive has 5TB file size limit
+    MAX_FILESIZE = 4096 << 30       # safer to avoid possible off-by-one errors
     UPLOAD_CHUNKSIZE = 4 << 30      # GAE has 5MB limit on request size
     DOWNLOAD_CHUNKSIZE = 4 << 30    # Response content is stored in memory
 
@@ -225,13 +263,23 @@ class DriveArchiver(Archiver):
 
         archives = {}
         for archive in self._list_folder(set_id):
+            properties = dict((p['key'], p['value'])
+                              for p in archive.get('properties', []))
+            if properties.get('googledrive-part', '1') != '1':
+                continue
+
+            # size property is the size of a reassembled multipart object
+            size = properties.get('size', archive['fileSize'])
+            parts = properties.get('googledrive-parts', '1')
+
             name = archive['title']
             archives[name] = {
-                'size': archive['fileSize'],
-                'aws-set': set_name,
-                'aws-archive': name,
-                'aws-aid': archive['id'],
-                'aws-creation-time': archive['createdDate'],
+                'size': size,
+                'googledrive-set': set_name,
+                'googledrive-archive': name,
+                'googledrive-aid': archive['id'],
+                'googledrive-creation-time': archive['createdDate'],
+                'googledrive-parts': parts,
             }
         return archives
 
@@ -241,40 +289,54 @@ class DriveArchiver(Archiver):
             raise ValueError("Set folder for '%s' missing" % set_name)
 
         size = os.path.getsize(local_path)
-        if size >= self.MAX_FILESIZE:
-            raise ValueError("Archive file too large %s" % archive_name)
+        parts = ((size-1) // self.MAX_FILESIZE) + 1 or 1
 
-        properties = [{'key': key, 'value': value, 'visibility': 'PRIVATE'}
-                      for key, value in metadata.items()]
+        with open(local_path, 'rb') as source_file:
+            props = dict(metadata)
+            props['googledrive-parts'] = str(parts)
 
-        # create archive file
-        mimetype = "application/octet-stream"
-        body = {
-            "title": archive_name,
-            "mimeType": mimetype,
-            "parents": [{"id": set_id}],
-            "properties": properties,
-        }
-        data = MediaFileUpload(local_path, mimetype=mimetype,
-                               chunksize=self.UPLOAD_CHUNKSIZE, resumable=True)
-        self._service.files().insert(body=body, media_body=data).execute()
+            for part in xrange(parts):
+                props['googledrive-part'] = str(part + 1)
 
-    def _download_archive(self, archive_id, path):
+                offset = part * self.MAX_FILESIZE
+                file_part = _PartialFile(source_file, offset, self.MAX_FILESIZE)
+
+                # create archive file
+                mimetype = "application/octet-stream"
+                body = {
+                    "title": archive_name,
+                    "mimeType": mimetype,
+                    "parents": [{"id": set_id}],
+                    "properties": [{
+                        'key': key,
+                        'value': value,
+                        'visibility': 'PRIVATE'
+                    } for key, value in props.items()]
+                }
+                data = MediaIoBaseUpload(file_part, mimetype=mimetype,
+                     chunksize=self.UPLOAD_CHUNKSIZE, resumable=True)
+                self._service.files().insert(body=body, media_body=data).execute()
+
+    def _download_archive(self, archive, path):
         with open(path, 'wb') as archive_file:
-            request = self._service.files().get_media(fileId=archive_id)
-            media_req = MediaIoBaseDownload(archive_file, request,
-                                            chunksize=self.DOWNLOAD_CHUNKSIZE)
+            M = len(archive)
+            for N, part in enumerate(archive, 1):
+                part_id = part['id']
+                request = self._service.files().get_media(fileId=part_id)
+                media_req = MediaIoBaseDownload(archive_file, request,
+                                                chunksize=self.DOWNLOAD_CHUNKSIZE)
 
-            try:
-                while True:
-                    progress, done = media_req.next_chunk(num_retries=5)
-                    if progress:
-                        pct = int(progress.progress() * 100)
-                        print >>sys.stderr, "\rprogress: %d%%" % pct,
-                    if done:
-                        break
-            finally:
-                print >>sys.stderr, ""
+                try:
+                    while True:
+                        progress, done = media_req.next_chunk(num_retries=5)
+                        if progress:
+                            pct = int(progress.progress() * 100)
+                            print >>sys.stderr, "\r(%d/%d) progress: %d%%   " % \
+                                (N, M, pct),
+                        if done:
+                            break
+                finally:
+                    print >>sys.stderr, ""
 
     def download_archives(self, set_name, archive_list, max_rate=None):
         set_id = self._find_set_id(set_name)
@@ -282,35 +344,48 @@ class DriveArchiver(Archiver):
             return
 
         idmap = {}
-        for archive in self._list_folder(set_id):
-            idmap[archive['title']] = archive
+        for archive_part in self._list_folder(set_id):
+            properties = dict((p['key'], p['value'])
+                              for p in archive_part.get('properties', []))
+            N = int(properties.get('googledrive-part', '1'))
+            M = int(properties.get('googledrive-parts', '1'))
+
+            archive = idmap.setdefault(archive_part['title'], [None,] * M)
+            # part numbers are 1-indexed, python arrays are 0-indexed
+            archive[N-1] = archive_part
 
         archives = []
         for archive_name, archive_path in archive_list:
             try:
                 archive = idmap[archive_name]
-                archives.append((archive_name, archive_path, archive))
+                if None not in archive:
+                    archives.append((archive_name, archive_path, archive))
+                else:
+                    yield(archive_name, ValueError('Missing one or more parts'))
             except KeyError:
                 yield(archive_name, ValueError('No such archive'))
         if not archives:
             return
 
-        total_size = sum(int(archive['fileSize']) for _, _, archive in archives)
+        total_size = sum(int(part['fileSize'])
+                         for _, _, archive in archives
+                         for part in archive)
         foreverholdyourpeace(
             'Going to retrieve %s of data' % humanize_size(total_size),
             file=sys.stderr
         )
 
         for archive_name, archive_path, archive in archives:
-            archive_id = archive['id']
-            archive_size = int(archive['fileSize'])
-            archive_metadata = dict((prop['key'], prop['value'])
-                                    for prop in archive['properties'])
+            archive_size = sum(int(part['fileSize']) for part in archive)
+            print 'Retrieving %s (%d bytes/%d part(s))' % \
+                (archive_name, archive_size, len(archive))
 
-            print 'Retrieving %s (%d bytes)' % (archive_name, archive_size)
+            # pull archive metadata from first part
+            archive_metadata = dict((prop['key'], prop['value'])
+                                    for prop in archive[0]['properties'])
 
             try:
-                self._download_archive(archive_id, archive_path)
+                self._download_archive(archive, archive_path)
             except HttpError as exception:
                 os.unlink(archive_path)
                 yield (archive_name, exception)
