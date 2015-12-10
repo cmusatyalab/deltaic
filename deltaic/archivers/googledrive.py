@@ -245,8 +245,9 @@ class DriveArchiver(Archiver):
         if not set_id:
             return
 
-        self._service.properties().delete(set_id, "complete", "PRIVATE").execute()
-        self._service.files().delete(fileId=set_id)
+        self._service.properties().delete(fileId=set_id, propertyKey="complete",
+                                          visibility="PRIVATE").execute()
+        self._service.files().delete(fileId=set_id).execute()
 
     def list_set_archives(self, set_name):
         set_id = self._find_set_id(set_name)
