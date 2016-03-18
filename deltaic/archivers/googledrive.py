@@ -44,7 +44,10 @@ GOOGLE_DRIVE_PRICING = [
 ]
 
 
-OAUTH_SCOPE = ('https://www.googleapis.com/auth/drive.appfolder',)
+OAUTH_SCOPE = (
+    'https://www.googleapis.com/auth/drive.appfolder',
+    'https://www.googleapis.com/auth/drive.file',
+)
 REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob'
 DEFAULT_CREDENTIALS_FILE = 'deltaic-googledrive-credentials.json'
 
@@ -167,7 +170,7 @@ class _PartialFile(object):
 class DriveArchiver(Archiver):
     LABEL = 'googledrive'
     MAX_FILESIZE = 5120 << 30       # Drive has 5TB file size limit
-    MAX_FILESIZE = 4096 << 30       # safer to avoid possible off-by-one errors
+    MAX_FILESIZE = 2048 << 30       # safer to avoid possible off-by-one errors
     UPLOAD_CHUNKSIZE = 4 << 30      # GAE has 5MB limit on request size
     DOWNLOAD_CHUNKSIZE = 4 << 30    # Response content is stored in memory
 
