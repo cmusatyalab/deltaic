@@ -115,7 +115,7 @@ class PhysicalSnapshot(Snapshot):
 
     def remove(self, verbose=False):
         with open('/dev/null', 'r+') as null:
-            subprocess.check_call(['sudo', 'lvremove',
+            subprocess.check_call(['sudo', 'lvremove', '--force',
                     '%s/%s' % (self.vg, self.name)], stdin=null,
                     stdout=None if verbose else null)
 
