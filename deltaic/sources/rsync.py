@@ -50,7 +50,7 @@ def run_rsync(cmd):
 def run_rsync_with_fallback(cmd):
     cmd = list(cmd)
     ret = run_rsync(cmd)
-    if ret == 2:
+    if ret in (2, 12):
         # Drop features that require protocol >= 30
         cmd.remove('--acls')
         cmd.remove('--xattrs')
