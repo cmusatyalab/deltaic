@@ -21,15 +21,14 @@ import argparse
 import os
 import re
 import subprocess
-import sys
 
 from ..command import make_subcommand_group
 from ..util import make_dir_path, random_do_work
 from . import Source, Unit
 
-def remote_command(host, command):
+def remote_command(host, command, user='root'):
     args = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no',
-            'root@%s' % host, command]
+            '%s@%s' % (user, host), command]
     print ' '.join(args)
     subprocess.check_call(args)
 
@@ -60,7 +59,8 @@ def run_rsync_with_fallback(cmd):
         raise IOError('rsync failed with code %d' % ret)
 
 
-def backup_host(host, root_dir, mounts, exclude=(), scrub=False, rsync=None):
+def backup_host(host, root_dir, mounts, exclude=(), scrub=False, rsync=None,
+        user='root'):
     if rsync is None:
         rsync = 'rsync'
     make_dir_path(root_dir)
@@ -68,7 +68,7 @@ def backup_host(host, root_dir, mounts, exclude=(), scrub=False, rsync=None):
             '--delete-excluded', '--numeric-ids', '--stats', '--partial',
             '--rsh=ssh -o BatchMode=yes -o StrictHostKeyChecking=no']
     args.extend(['--exclude=' + r for r in exclude])
-    args.extend(['root@%s:%s' % (host, mount.rstrip('/') or '/')
+    args.extend(['%s@%s:%s' % (user, host, mount.rstrip('/') or '/')
             for mount in mounts])
     args.append(root_dir.rstrip('/'))
     if scrub:
@@ -113,13 +113,14 @@ def cmd_rsync_backup(config, args):
     exclude = settings.get('rsync-exclude', [])
     exclude.extend(info.get('exclude', []))
     rsync = settings.get('rsync-local-binary')
+    user = info.get('user', 'root')
 
     if 'pre' in info:
-        remote_command(args.host, info['pre'])
+        remote_command(args.host, info['pre'], user=user)
     backup_host(args.host, root_dir, info['mounts'], exclude,
-            scrub=args.scrub, rsync=rsync)
+            scrub=args.scrub, rsync=rsync, user=user)
     if 'post' in info:
-        remote_command(args.host, info['post'])
+        remote_command(args.host, info['post'], user=user)
 
 
 def cmd_rsync_restore(config, args):
