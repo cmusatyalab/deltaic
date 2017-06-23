@@ -75,12 +75,12 @@ def get_snapid_for_snapshot(pool, image, snapshot):
 
 def create_snapshot(pool, image):
     snapshot = 'backup-%s' % uuid.uuid1()
-    rbd_exec(pool, 'snap', 'create', '-i', image, '--snap', snapshot)
+    rbd_exec(pool, 'snap', 'create', '--image', image, '--snap', snapshot)
     return snapshot
 
 
 def delete_snapshot(pool, image, snapshot):
-    rbd_exec(pool, 'snap', 'rm', '-i', image, '--snap', snapshot)
+    rbd_exec(pool, 'snap', 'rm', '--image', image, '--snap', snapshot)
 
 
 def create_or_open(path):
