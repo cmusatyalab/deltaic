@@ -34,8 +34,9 @@ setup(
     install_requires=[
         'argparse',
         'boto >= 2.23.0',
-        'github3.py >= 0.9.0',
+        'github3.py < 1.0.0', # >= 0.9.0
         'google-api-python-client',
+        'oauth2client',
         'pybloom', # >= 2.0
         'python-dateutil',
         'PyYAML',
