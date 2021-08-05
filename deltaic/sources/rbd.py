@@ -83,12 +83,6 @@ def delete_snapshot(pool, image, snapshot):
     rbd_exec(pool, 'snap', 'rm', '--image', image, '--snap', snapshot)
 
 
-def create_or_open(path):
-    # Open a file R/W, creating it if necessary but not truncating it.
-    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0666)
-    return os.fdopen(fd, 'r+b')
-
-
 def try_unlink(path):
     try:
         os.unlink(path)
@@ -96,18 +90,82 @@ def try_unlink(path):
         pass
 
 
-class ScrubbingFile(object):
-    """A writable file-like object that compares its input to the file data
-    at the specified path.  If we find a mismatch, fix it in-place."""
+class LazyWriteFile(object):
+    def __init__(self, path, create=False):
+        self._path = path
+        if create and not os.path.exists(path):
+            fd = os.open(path, os.O_RDWR | os.O_CREAT, 0666)
+            self._fh = os.fdopen(fd, 'r+b')
+        else:
+            self._fh = open(path, 'rb')
 
-    def __init__(self, path):
-        self._fh = open(path, 'r+b')
+    def __reopen_rw__(self):
+        if self._fh.closed or '+' in self._fh.mode:
+            return
+        print 're-opening', self._path, 'rw'
+        offset = self._fh.tell()
+        self._fh = open(self._path, 'r+b')
+        self._fh.seek(offset)
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, exc_tb):
         self.close()
+
+    def read(self, size=-1):
+        return self._fh.read(size)
+
+    def readline(self):
+        return self._fh.readline()
+
+    def readlines(self):
+        return self._fh.readlines()
+
+    def seek(self, offset, whence=0):
+        self._fh.seek(offset, whence)
+
+    def tell(self):
+        return self._fh.tell()
+
+    def write(self, buf):
+        self.__reopen_rw__()
+        self._fh.write(input_buf)
+
+    def writelines(self, seq):
+        self.__reopen_rw__()
+        self._fh.writelines(self, seq)
+
+    def truncate(self, len):
+        saved_offset = self._fh.tell()
+        self._fh.seek(0, 2)
+        filesize = self._fh.tell()
+        self._fh.seek(saved_offset)
+
+        if filesize != len:
+            self.__reopen_rw__()
+            self._fh.truncate(len)
+
+    def close(self):
+        self._fh.close()
+
+    @property
+    def mode(self):
+        return self._fh.mode
+
+    def punch(self, offset, length):
+        # deltaic.platform.punch will call this.
+        # Just repunch the file rather than checking for zeroes.
+        self.__reopen_rw__()
+        punch(self._fh, offset, length)
+
+
+class ScrubbingFile(LazyWriteFile):
+    """A writable file-like object that compares its input to the file data
+    at the specified path.  If we find a mismatch, fix it in-place."""
+
+    def __init__(self, path):
+        super(LazyWriteFile, self).__init__(path)
 
     def write(self, buf):
         start = 0
@@ -119,25 +177,18 @@ class ScrubbingFile(object):
                 self._fh.seek(-count, 1)
                 print >>sys.stderr, "Fixing data mismatch at %d" % (
                         self._fh.tell())
-                self._fh.write(input_buf)
+                super(LazyWriteFile, self).write(input_buf)
             start += count
-
-    def seek(self, offset, whence=0):
-        self._fh.seek(offset, whence)
-
-    def tell(self):
-        return self._fh.tell()
-
-    def truncate(self, len):
-        self._fh.truncate(len)
 
     def punch(self, offset, length):
         # deltaic.platform.punch will call this.
-        # Just repunch the file rather than checking for zeroes.
-        punch(self._fh, offset, length)
-
-    def close(self):
-        self._fh.close()
+        if "+" not in self._fh.mode:
+            self._fh.seek(offset)
+            buf = self._fh.read(length)
+            bufsize = len(buf)
+            if bufsize == length and bufsize == buf.count("\0"):
+                return
+        super(LazyWriteFile, self).punch(offset, length)
 
 
 def export_diff(pool, image, snapshot, basis=None, fh=subprocess.PIPE):
@@ -206,7 +257,7 @@ def fetch_snapshot(pool, image, snapshot, path):
         os.unlink(path)
     proc = export_diff(pool, image, snapshot)
     try:
-        with create_or_open(path) as ofh:
+        with LazyWriteFile(path, create=True) as ofh:
             unpack_diff(proc.stdout, ofh)
         if proc.wait():
             raise IOError('Export returned %d' % proc.returncode)
@@ -266,7 +317,7 @@ def apply_patch_and_rebase(pool, image, path):
         try_unlink(pending_path)
         return
     with open(pending_path, 'rb') as ifh:
-        with create_or_open(path) as ofh:
+        with LazyWriteFile(path, create=True) as ofh:
             unpack_diff(ifh, ofh)
     delete_snapshot(pool, image, old_snapshot)
     attrs.update(ATTR_SNAPSHOT, new_snapshot)
