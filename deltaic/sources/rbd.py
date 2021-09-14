@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014-2015 Carnegie Mellon University
+# Copyright (c) 2014-2021 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -165,7 +165,7 @@ class ScrubbingFile(LazyWriteFile):
     at the specified path.  If we find a mismatch, fix it in-place."""
 
     def __init__(self, path):
-        super(LazyWriteFile, self).__init__(path)
+        super(ScrubbingFile, self).__init__(path)
 
     def write(self, buf):
         start = 0
