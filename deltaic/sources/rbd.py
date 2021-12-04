@@ -130,7 +130,7 @@ class LazyWriteFile(object):
 
     def write(self, buf):
         self.__reopen_rw__()
-        self._fh.write(input_buf)
+        self._fh.write(buf)
 
     def writelines(self, seq):
         self.__reopen_rw__()
