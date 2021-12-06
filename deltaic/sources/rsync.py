@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014 Carnegie Mellon University
+# Copyright (c) 2014-2021 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -21,6 +21,7 @@ import argparse
 import os
 import re
 import subprocess
+import sys
 
 from ..command import make_subcommand_group
 from ..util import make_dir_path, random_do_work
@@ -34,23 +35,24 @@ def remote_command(host, command, user="root"):
         "BatchMode=yes",
         "-o",
         "StrictHostKeyChecking=no",
-        "%s@%s" % (user, host),
+        f"{user}@{host}",
         command,
     ]
-    print " ".join(args)
+    print(" ".join(args))
     subprocess.check_call(args)
 
 
 def run_rsync(cmd):
-    print " ".join(cmd)
+    print(" ".join(cmd))
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
     # Filter out spurious log output from
     # https://bugzilla.samba.org/show_bug.cgi?id=10496
     spurious = re.compile(r"[.h][dfL]\.{8}x ")
     for line in proc.stdout:
+        line = line.decode(sys.stdout.encoding)
         if not spurious.match(line):
-            print line.strip()
+            print(line.strip())
 
     return proc.wait()
 
@@ -64,7 +66,7 @@ def run_rsync_with_fallback(cmd):
         cmd.remove("--xattrs")
         ret = run_rsync(cmd)
     if ret not in (0, 24):
-        raise IOError("rsync failed with code %d" % ret)
+        raise OSError("rsync failed with code %d" % ret)
 
 
 def backup_host(
@@ -88,7 +90,7 @@ def backup_host(
     ]
     args.extend(["--exclude=" + r for r in exclude])
     args.extend(
-        ["%s@%s:%s" % (user, host, mount.rstrip("/") or "/") for mount in mounts]
+        ["{}@{}:{}".format(user, host, mount.rstrip("/") or "/") for mount in mounts]
     )
     args.append(root_dir.rstrip("/"))
     if scrub:
@@ -106,7 +108,7 @@ def restore_host(
     source = source.rstrip("/")
     if os.path.isdir(source):
         source += "/"
-    dest = "%s@%s:%s/" % (user, dest_host, dest_dir.rstrip("/"))
+    dest = "{}@{}:{}/".format(user, dest_host, dest_dir.rstrip("/"))
 
     if not coda:
         # Complain if remote superuser activities (-ogD) fail

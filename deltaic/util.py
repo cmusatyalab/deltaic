@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014 Carnegie Mellon University
+# Copyright (c) 2014-2021 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -17,20 +17,20 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from __future__ import division
 
 import calendar
+import contextlib
 import errno
 import fcntl
 import os
 import random
 import subprocess
 from contextlib import contextmanager
+from io import BytesIO
 from tempfile import mkdtemp, mkstemp
 
 import xattr
-from cStringIO import StringIO
-from pybloom import ScalableBloomFilter
+from pybloom_live import ScalableBloomFilter
 
 TEMPFILE_PREFIX = ".backup-tmp"
 
@@ -39,7 +39,7 @@ class LockConflict(Exception):
     pass
 
 
-class BloomSet(object):
+class BloomSet:
     def __init__(self, initial_capacity=1000, error_rate=0.0001):
         self._set = ScalableBloomFilter(
             initial_capacity=initial_capacity,
@@ -59,14 +59,16 @@ class BloomSet(object):
         return self._bloom_key(name) in self._set
 
     def _bloom_key(self, name):
-        if isinstance(name, unicode):
+        if isinstance(name, str):
             name = name.encode("utf-8")
         return self._bloom_salt + name
 
 
 def gc_directory_tree(root_dir, valid_paths, report_callback=None):
     if report_callback is None:
-        report_callback = lambda path, is_dir: None
+
+        def report_callback(path, is_dir):
+            pass
 
     def handle_err(err):
         raise err
@@ -98,14 +100,14 @@ def write_atomic(path, prefix=TEMPFILE_PREFIX, suffix=""):
     try:
         with os.fdopen(fd, "wb") as fh:
             yield fh
-        os.chmod(tempfile, 0644)
+        os.chmod(tempfile, 0o644)
         os.rename(tempfile, path)
-    except:
+    except BaseException:
         os.unlink(tempfile)
         raise
 
 
-class UpdateFile(object):
+class UpdateFile:
     """File-like object, only for writing, which atomically overwrites
     the specified file only if the new data is different from the old.
     Avoids unnecessary LVM COW.
@@ -116,8 +118,8 @@ class UpdateFile(object):
     def __init__(self, path, prefix=TEMPFILE_PREFIX, suffix="", block_size=256 << 10):
         self.modified = None
         self._coroutine = self._start_coroutine(path, prefix, suffix, block_size)
-        self._buf = ""
-        self._desired_size = self._coroutine.next()
+        self._buf = b""
+        self._desired_size = next(self._coroutine)
 
     def __enter__(self):
         return self
@@ -163,18 +165,18 @@ class UpdateFile(object):
         # Open old file if it exists
         try:
             oldfh = open(path, "rb")
-        except IOError:
+        except OSError:
             oldfh = None
 
         try:
             # Find length of common prefix
             prefix_len = 0
-            databuf = ""
+            databuf = b""
             while oldfh:
                 oldbuf = oldfh.read(block_size)
-                if oldbuf == "":
+                if oldbuf == b"":
                     databuf = yield block_size
-                    if databuf == "":
+                    if databuf == b"":
                         # Files are identical
                         self.modified = False
                         return
@@ -200,7 +202,7 @@ class UpdateFile(object):
                 # Copy remaining data
                 while True:
                     databuf = yield block_size
-                    if databuf == "":
+                    if databuf == b"":
                         break
                     newfh.write(databuf)
 
@@ -222,10 +224,12 @@ def update_file(path, data, prefix=TEMPFILE_PREFIX, suffix="", block_size=256 <<
         if hasattr(data, "read"):
             while True:
                 buf = data.read(block_size)
-                if buf == "":
+                if buf == b"":
                     break
                 fh.write(buf)
         else:
+            if isinstance(data, str):
+                data = data.encode("utf-8")
             fh.write(data)
     return fh.modified
 
@@ -278,7 +282,7 @@ def _test_update_file():
 
         # Extend file
         init(data)
-        ndata = data + "asdfghjkl"
+        ndata = data + b"asdfghjkl"
         assert update_file(path, ndata)
         check(ndata)
 
@@ -291,12 +295,12 @@ def _test_update_file():
         # File handle
         init(data)
         ndata = change_byte(data, 1234567)
-        assert update_file(path, StringIO(ndata))
+        assert update_file(path, BytesIO(ndata))
         check(ndata)
 
         # Streaming writes
         init(data)
-        ndata = data + "asdfghjkl"
+        ndata = data + b"asdfghjkl"
         with UpdateFile(path) as fh:
             for i in range(0, len(ndata), 384 << 10):
                 fh.write(ndata[i : i + (384 << 10)])
@@ -305,13 +309,10 @@ def _test_update_file():
 
         # Streaming writes with failure
         init(data)
-        ndata = "q" + data[:300000]
-        try:
-            with UpdateFile(path) as fh:
-                fh.write(ndata)
-                raise ValueError
-        except ValueError:
-            pass
+        ndata = b"q" + data[:300000]
+        with contextlib.suppress(ValueError), UpdateFile(path) as fh:
+            fh.write(ndata)
+            raise ValueError
         assert fh.modified is None
         check(data)
 
@@ -323,10 +324,8 @@ def _test_update_file():
         check(data)
 
     finally:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(path)
-        except OSError:
-            pass
         os.rmdir(dirpath)
 
 
@@ -335,14 +334,14 @@ def lockfile(settings, name):
     root_dir = settings["root"]
     root_parent = os.path.dirname(root_dir)
     if os.stat(root_dir).st_dev == os.stat(root_parent).st_dev:
-        raise IOError("Backup filesystem is not mounted")
+        raise OSError("Backup filesystem is not mounted")
 
     lock_dir = make_dir_path(root_dir, ".lock")
     lock_file = os.path.join(lock_dir, name)
     with open(lock_file, "w") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except IOError, e:
+        except OSError as e:
             if e.errno in (errno.EACCES, errno.EAGAIN):
                 raise LockConflict("Another action is already running.")
             else:
@@ -350,7 +349,7 @@ def lockfile(settings, name):
         yield
 
 
-class XAttrs(object):
+class XAttrs:
     def __init__(self, path):
         self._attrs = xattr.xattr(path, xattr.XATTR_NOFOLLOW)
 
@@ -358,23 +357,22 @@ class XAttrs(object):
         return key in self._attrs
 
     def __getitem__(self, key):
-        return self._attrs[key]
+        return self._attrs[key].decode("utf-8")
 
     def get(self, key, default=None):
         try:
-            return self._attrs[key]
+            return self._attrs[key].decode("utf-8")
         except KeyError:
             return default
 
     def update(self, key, value):
+        value = value.encode("utf-8")
         if self.get(key) != value:
             self._attrs[key] = value
 
     def delete(self, key):
-        try:
+        with contextlib.suppress(KeyError):
             del self._attrs[key]
-        except KeyError:
-            pass
 
 
 def random_do_work(settings, option, default_probability):
@@ -390,7 +388,7 @@ def make_dir_path(*args):
     path = os.path.join(*args)
     try:
         os.makedirs(path)
-    except OSError, e:
+    except OSError as e:
         if e.errno != errno.EEXIST:
             raise
     return path
@@ -402,10 +400,10 @@ def humanize_size(size):
     while size >= 1024 and index < len(units):
         size /= 1024
         index += 1
-    return "%.1f %s" % (size, units[index])
+    return f"{size:.1f} {units[index]}"
 
 
-class Pipeline(object):
+class Pipeline:
     def __init__(self, cmds, in_fh=None, out_fh=None, env=None):
         self._procs = []
 
@@ -439,7 +437,7 @@ class Pipeline(object):
             proc.wait()
             failed = failed or proc.returncode
         if failed and not terminate:
-            raise IOError("Pipeline process returned non-zero exit status")
+            raise OSError("Pipeline process returned non-zero exit status")
 
     def __enter__(self):
         return self

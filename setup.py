@@ -37,13 +37,10 @@ setup(
         "github3.py < 1.0.0",  # >= 0.9.0
         "google-api-python-client",
         "oauth2client",
-        "pybloom",  # >= 2.0
+        "pybloom-live",
         "python-dateutil",
         "PyYAML",
         "xattr",
-    ],
-    dependency_links=[
-        "git+https://github.com/jaybaird/python-bloomfilter@v2.0#egg=pybloom",
     ],
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -51,8 +48,7 @@ setup(
         "Intended Audience :: System Administrators",
         "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
         "Operating System :: POSIX :: Linux",
-        "Programming Language :: Python :: 2.6",
-        "Programming Language :: Python :: 2.7",
+        "Programming Language :: Python :: 3.6",
         "Topic :: System :: Archiving :: Backup",
     ],
     zip_safe=True,

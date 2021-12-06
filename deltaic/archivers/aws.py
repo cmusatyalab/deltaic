@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014 Carnegie Mellon University
+# Copyright (c) 2014-2021 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -17,11 +17,11 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from __future__ import division
 
 import calendar
 import math
 import os
+import queue
 import sys
 import threading
 import time
@@ -31,7 +31,6 @@ from datetime import datetime, timedelta
 import boto.glacier
 import boto.sdb
 import dateutil.parser
-import Queue
 from boto.exception import BotoServerError
 from dateutil.tz import tzutc
 
@@ -49,7 +48,7 @@ class _ConditionalCheckFailed(Exception):
 def _conditional_check():
     try:
         yield
-    except BotoServerError, e:
+    except BotoServerError as e:
         if e.error_code == "ConditionalCheckFailed":
             raise _ConditionalCheckFailed()
         else:
@@ -58,7 +57,7 @@ def _conditional_check():
 
 def _debug(*args):
     if DEBUG:
-        print >> sys.stderr, " ".join(str(a) for a in args)
+        print(" ".join(str(a) for a in args), file=sys.stderr)
 
 
 class AWSArchiver(Archiver):
@@ -300,10 +299,10 @@ class AWSArchiver(Archiver):
             'select * from `%s` where `aws-set` = "%s" and '
             + "`aws-archive` is not null"
         ) % (self._domain.name, self._quote_value(set_name))
-        return dict(
-            (res["aws-archive"], dict(res))
+        return {
+            res["aws-archive"]: dict(res)
             for res in self._domain.select(qstr, consistent_read=True)
-        )
+        }
 
     def upload_archive(self, set_name, archive_name, metadata, local_path):
         # We don't want to upload concurrently because the chunk size is
@@ -335,7 +334,7 @@ class AWSArchiver(Archiver):
             # Lost the race.  Pay the early-deletion penalty rather than
             # supporting multiple Glacier archives per Deltaic archive.
             self._vault.delete_archive(aid)
-        except:
+        except BaseException:
             # Don't leak the archive
             self._vault.delete_archive(aid)
             raise
@@ -366,20 +365,27 @@ class AWSArchiver(Archiver):
             return
 
         # Give the user a chance to cancel before they are charged.
-        print >> sys.stderr, "Going to retrieve %s of data at %s/hour." % (
-            humanize_size(total_size),
-            humanize_size(max_rate),
+        print(
+            "Going to retrieve {} of data at {}/hour.".format(
+                humanize_size(total_size),
+                humanize_size(max_rate),
+            ),
+            file=sys.stderr,
         )
         for remaining in range(self.RETRIEVAL_DELAY, -1, -1):
-            print >> sys.stderr, ("\rStarting in %d seconds. " % remaining),
-            sys.stdout.flush()
+            print(
+                "\rStarting in %d seconds. " % remaining,
+                end="",
+                file=sys.stderr,
+                flush=True,
+            )
             if remaining:
                 time.sleep(1)
-        print >> sys.stderr, "\nRetrieving."
+        print("\nRetrieving.", file=sys.stderr)
 
         # Retrieve.
         state = DownloadState(zip(archive_names, archive_sizes))
-        finished_queue = Queue.Queue()
+        finished_queue = queue.Queue()
         while not state.done:
             # Launch retrievals.
             timeslot = self._now(hour=True)
@@ -409,7 +415,7 @@ class AWSArchiver(Archiver):
                     {
                         "Type": "archive-retrieval",
                         "ArchiveId": metadata["aws-aid"],
-                        "Description": "%s %s %s" % (set_name, state.name, byte_range),
+                        "Description": f"{set_name} {state.name} {byte_range}",
                         "RetrievalByteRange": byte_range,
                     },
                 )
@@ -428,7 +434,7 @@ class AWSArchiver(Archiver):
                 max_wait = self._seconds_to_next_timeslot(timeslot)
                 try:
                     archive_name, exception = finished_queue.get(timeout=max_wait)
-                except Queue.Empty:
+                except queue.Empty:
                     # We've hit the next timeslot.
                     break
 
@@ -443,7 +449,7 @@ class AWSArchiver(Archiver):
         # Thread function
         try:
             job = self._wait_for_job(job_id)
-            fd = os.open(local_path, os.O_WRONLY | os.O_CREAT, 0666)
+            fd = os.open(local_path, os.O_WRONLY | os.O_CREAT, 0o666)
             with os.fdopen(fd, "wb") as fh:
                 fh.seek(offset)
                 # Workaround for:
@@ -457,7 +463,7 @@ class AWSArchiver(Archiver):
                     fh.write(buf)
             _debug("Finished request of", archive_name, "at", offset)
             queue.put((archive_name, None))
-        except Exception, e:
+        except Exception as e:
             _debug("Failed request of", archive_name, "at", offset, "-->", e)
             queue.put((archive_name, e))
 
@@ -468,10 +474,10 @@ class AWSArchiver(Archiver):
         job_id = self._vault.retrieve_inventory()
         job = self._wait_for_job(job_id)
         inventory = job.get_output()
-        vault_archives = dict(
-            (archive["ArchiveId"], archive["Size"])
+        vault_archives = {
+            archive["ArchiveId"]: archive["Size"]
             for archive in inventory["ArchiveList"]
-        )
+        }
 
         # Walk archives in domain
         qstr = "select `aws-aid` from `%s` where `aws-aid` is not null" % (
@@ -486,9 +492,12 @@ class AWSArchiver(Archiver):
         for aid in vault_archives:
             self._vault.delete_archive(aid)
         if vault_archives:
-            print "Deleted %d leaked archives, %d bytes" % (
-                len(vault_archives),
-                sum(vault_archives.values()),
+            print(
+                "Deleted %d leaked archives, %d bytes"
+                % (
+                    len(vault_archives),
+                    sum(vault_archives.values()),
+                )
             )
 
     def report_cost(self):
@@ -499,23 +508,26 @@ You can retrieve around %(free_transfer)s for free today (in UTC), provided that
 retrievals occur at a constant rate during all hours in which you are
 retrieving.  If you exceed this amount, your bill will be determined by your
 maximum hourly retrieval rate for the month.  Each additional GB/hour of
-retrieval bandwidth costs $%(transfer_cost_gb).2f, but is then available for the whole month at
-no additional charge.  The maximum retrieval rate this month has been
-%(max_transfer_rate)s/hour.
+retrieval bandwidth costs $%(transfer_cost_gb).2f, but is then available for
+the whole month at no additional charge.  The maximum retrieval rate this month
+has been %(max_transfer_rate)s/hour.
 """.strip()
 
         total_size = sum(metadata["size"] for metadata in self.list_sets().values())
         _, bandwidth_item = self._get_bandwidth_item()
         now = self._now()
         days_in_month = calendar.monthrange(now.year, now.month)[1]
-        print msg % {
-            "total_size": humanize_size(total_size),
-            "storage_cost": (total_size / (1 << 30)) * self._storage_cost,
-            "free_transfer": humanize_size(
-                total_size * self.MONTHLY_FREE_RETRIEVAL_FRACTION / days_in_month
-            ),
-            "transfer_cost_gb": self._storage_cost * days_in_month * 24,
-            "max_transfer_rate": humanize_size(
-                int(bandwidth_item["max-bandwidth-month"])
-            ),
-        }
+        print(
+            msg
+            % {
+                "total_size": humanize_size(total_size),
+                "storage_cost": (total_size / (1 << 30)) * self._storage_cost,
+                "free_transfer": humanize_size(
+                    total_size * self.MONTHLY_FREE_RETRIEVAL_FRACTION / days_in_month
+                ),
+                "transfer_cost_gb": self._storage_cost * days_in_month * 24,
+                "max_transfer_rate": humanize_size(
+                    int(bandwidth_item["max-bandwidth-month"])
+                ),
+            }
+        )

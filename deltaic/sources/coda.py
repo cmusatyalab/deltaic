@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014 Carnegie Mellon University
+# Copyright (c) 2014-2021 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -22,7 +22,9 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tarfile
+from pathlib import Path
 
 from ..command import make_subcommand_group
 from ..platform import lutime
@@ -48,7 +50,7 @@ class DumpError(Exception):
 def volutil_cmd(host, subcommand, args=(), volutil=None):
     if volutil is None:
         volutil = "volutil"
-    print ">", volutil, subcommand, " ".join(args)
+    print(">", volutil, subcommand, " ".join(args))
     return [
         "ssh",
         "-o",
@@ -69,14 +71,13 @@ def get_err_stream(verbose):
 
 
 def get_volume_ids(host, volume, verbose=False, volutil=None):
-    proc = subprocess.Popen(
-        volutil_cmd(host, "info", [volume], volutil=volutil),
-        stdout=subprocess.PIPE,
-        stderr=get_err_stream(verbose),
-    )
-    info, _ = proc.communicate()
-    if proc.returncode:
-        raise IOError("Couldn't get volume info for %s" % volume)
+    try:
+        info = subprocess.check_output(
+            volutil_cmd(host, "info", [volume], volutil=volutil),
+            stderr=get_err_stream(verbose),
+        ).decode(sys.stdout.encoding)
+    except subprocess.CalledProcessError:
+        raise OSError("Couldn't get volume info for %s" % volume)
 
     match = re.search("^id = ([0-9a-f]+)", info, re.MULTILINE)
     if match is None:
@@ -106,14 +107,15 @@ def refresh_backup_volume(host, volume, verbose=False, volutil=None):
 
 
 def build_path(root_dir, path):
-    normalized = os.path.normpath(path)
-    if normalized.startswith("../"):
-        raise ValueError("Attempted directory traversal: %s" % path)
-    # Call normpath again for the case where normalized == '.'
-    return os.path.normpath(os.path.join(root_dir, normalized))
+    resolved_path = (Path(root_dir) / path).resolve()
+
+    if not resolved_path.is_relative_to(root_dir):
+        raise ValueError(f"Attempted directory traversal: {path}")
+
+    return resolved_path
 
 
-class TarMemberFile(object):
+class TarMemberFile:
     # Wrapper around tarfile.ExFileObject that raises DumpError when
     # the tar stream is truncated mid-file.  This prevents us from
     # replacing a complete backup file with a truncated one.
@@ -125,7 +127,7 @@ class TarMemberFile(object):
     def read(self, size=None):
         buf = self._file.read(size)
         self._remaining -= len(buf)
-        if self._remaining > 0 and (buf == "" or size is None):
+        if self._remaining > 0 and (buf == b"" or size is None):
             raise DumpError("Premature EOF on tar stream")
         return buf
 
@@ -156,22 +158,21 @@ def update_dir_from_tar(tar, root_dir):
             st = None
 
         # If entry has changed types, remove the old object
-        if st:
-            if stat.S_IFMT(st.st_mode) != entry_stat_type:
-                if stat.S_ISDIR(st.st_mode):
-                    shutil.rmtree(path)
-                else:
-                    os.unlink(path)
-                st = None
+        if st and stat.S_IFMT(st.st_mode) != entry_stat_type:
+            if stat.S_ISDIR(st.st_mode):
+                shutil.rmtree(path)
+            else:
+                os.unlink(path)
+            st = None
 
         # Create parent directory if not present.  Parents are not
         # necessarily dumped before children.
-        dirpath = make_dir_path(os.path.dirname(path))
+        path.parent.mkdir(parents=True, exist_ok=True)
 
         # Create new object
         if entry.isdir():
             if not os.path.exists(path):
-                print "d", path
+                print("d", path)
                 os.mkdir(path)
             # Go back and set mtime after directory has been populated
             directories.append(entry)
@@ -181,10 +182,10 @@ def update_dir_from_tar(tar, root_dir):
             # at the source.  codadump2tar always dumps hard links, so we
             # will rebuild any links that should still exist.
             if update_file(path, TarMemberFile(tar, entry)):
-                print "f", path
+                print("f", path)
         elif entry.issym():
             if st is None or entry.linkname and os.readlink(path) != entry.linkname:
-                print "s", path
+                print("s", path)
                 if st is not None:
                     os.unlink(path)
                 os.symlink(entry.linkname, path)
@@ -196,7 +197,7 @@ def update_dir_from_tar(tar, root_dir):
                 or st.st_dev != target_st.st_dev
                 or st.st_ino != target_st.st_ino
             ):
-                print "l", path
+                print("l", path)
                 if st is not None:
                     os.unlink(path)
                 os.link(target_path, path)
@@ -214,12 +215,11 @@ def update_dir_from_tar(tar, root_dir):
             )
         # mtime.  Directories will be updated later, and hardlinks were
         # updated with the primary.
-        if entry.isfile() or entry.issym():
-            if os.lstat(path).st_mtime != entry.mtime:
-                lutime(path, entry.mtime)
+        if entry.isfile() or entry.issym() and os.lstat(path).st_mtime != entry.mtime:
+            lutime(path, entry.mtime)
 
         # Protect from garbage collection
-        valid_paths.add(path)
+        valid_paths.add(str(path))
 
     # Deferred update of directory mtimes
     for entry in directories:
@@ -247,7 +247,7 @@ def update_dir(
     try:
         tar = tarfile.open(fileobj=proc.stdout, mode="r|")
         valid_paths = update_dir_from_tar(tar, root_dir)
-    except tarfile.ReadError, e:
+    except tarfile.ReadError as e:
         raise DumpError(str(e))
 
     if proc.wait():
@@ -297,7 +297,7 @@ def sync_backup_volume(
     if not incremental:
 
         def report(path, is_dir):
-            print "-", path
+            print("-", path)
 
         gc_directory_tree(root_dir, valid_paths, report)
 

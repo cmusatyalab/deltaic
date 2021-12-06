@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014 Carnegie Mellon University
+# Copyright (c) 2014-2021 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -46,11 +46,14 @@ Defaults:%(user)s !requiretty
 
 
 def cmd_mkconf(config, args):
-    print TEMPLATES[args.file].strip() % {
-        "user": getuser(),
-        "prog": os.path.abspath(sys.argv[0]),
-        "email": args.email,
-    }
+    print(
+        TEMPLATES[args.file].strip()
+        % {
+            "user": getuser(),
+            "prog": os.path.abspath(sys.argv[0]),
+            "email": args.email,
+        }
+    )
 
 
 def _setup():

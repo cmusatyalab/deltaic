@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014 Carnegie Mellon University
+# Copyright (c) 2014-2021 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -17,8 +17,7 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from __future__ import division
-
+import contextlib
 import os
 import subprocess
 import sys
@@ -32,7 +31,7 @@ from ..storage import PhysicalSnapshot, Snapshot
 from ..util import Pipeline, XAttrs, humanize_size, lockfile, make_dir_path
 
 
-class Archiver(object):
+class Archiver:
     def __init__(self, profile_name, profile):
         self.profile_name = profile_name
         self.profile = profile
@@ -86,7 +85,7 @@ class Archiver(object):
         raise NotImplementedError
 
 
-class DownloadState(object):
+class DownloadState:
     # Retrieval helper class for Archiver subclasses.
 
     def __init__(self, items):
@@ -153,7 +152,7 @@ class DownloadState(object):
             return False
 
 
-class ArchiveInfo(object):
+class ArchiveInfo:
     ATTR_COMPRESSION = "user.archive.compression"
     ATTR_ENCRYPTION = "user.archive.encryption"
     ATTR_SHA256 = "user.archive.sha256"
@@ -176,14 +175,14 @@ class ArchiveInfo(object):
 
     def to_file(self, path):
         if os.stat(path).st_size != self.size:
-            raise IOError("Size mismatch")
+            raise OSError("Size mismatch")
         attrs = XAttrs(path)
         attrs.update(self.ATTR_COMPRESSION, self.compression)
         attrs.update(self.ATTR_ENCRYPTION, self.encryption)
         attrs.update(self.ATTR_SHA256, self.sha256)
 
 
-class ArchivePacker(object):
+class ArchivePacker:
     BUFLEN = 4 << 20
 
     def __init__(self, settings):
@@ -194,12 +193,9 @@ class ArchivePacker(object):
         self._gpg_signing_key = settings.get("archive-gpg-signing-key")
 
         self._gpg_env = dict(os.environ)
-        try:
+        with contextlib.suppress(OSError):  # stdin is not a tty
             # Required for GPG passphrase prompting
             self._gpg_env["GPG_TTY"] = os.ttyname(sys.stdin.fileno())
-        except OSError:
-            # stdin is not a tty
-            pass
 
         self.encryption = "gpg" if self._gpg_recipients else "none"
 
@@ -241,7 +237,7 @@ class ArchivePacker(object):
             "--selinux",
             "--xattrs",
             "-V",
-            "%s %s" % (snapshot_name, unit_name),
+            f"{snapshot_name} {unit_name}",
             "-C",
             snapshot_root,
             unit_name,
@@ -258,16 +254,18 @@ class ArchivePacker(object):
             cmds.append(self._gpg_cmd(args))
 
         pipe_r, pipe_w = os.pipe()
-        with os.fdopen(pipe_r, "r") as in_fh:
-            with Pipeline(cmds, out_fh=pipe_w, env=self._gpg_env):
-                os.close(pipe_w)
-                hash = sha256()
-                while True:
-                    buf = in_fh.read(self.BUFLEN)
-                    if not buf:
-                        break
-                    hash.update(buf)
-                    out_fh.write(buf)
+        with contextlib.ExitStack() as stack:
+            in_fh = stack.enter_context(os.fdopen(pipe_r, "r"))
+            stack.enter_context(Pipeline(cmds, out_fh=pipe_w, env=self._gpg_env))
+
+            os.close(pipe_w)
+            hash = sha256()
+            while True:
+                buf = in_fh.read(self.BUFLEN)
+                if not buf:
+                    break
+                hash.update(buf)
+                out_fh.write(buf)
 
         return ArchiveInfo(
             compression=compression,
@@ -313,22 +311,20 @@ class ArchivePacker(object):
                         words = line.split()
                         # Compare configured key with the long key ID and
                         # the key fingerprint
-                        try:
+                        with contextlib.suppress(IndexError):
                             if words[2].lower() == configured_key and words[1] in (
                                 "GOODSIG",
                                 "VALIDSIG",
                             ):
                                 verified = True
-                        except IndexError:
-                            pass
 
                     proc.wait()
                     if proc.returncode:
-                        raise IOError(
+                        raise OSError(
                             "gpg failed with exit status %d" % proc.returncode
                         )
                     if not verified:
-                        raise IOError(
+                        raise OSError(
                             "Could not verify GPG signature with "
                             + "configured signing key"
                         )
@@ -347,7 +343,7 @@ class ArchivePacker(object):
                         break
                     hash.update(buf)
                 if hash.hexdigest() != info.sha256:
-                    raise IOError("SHA-256 mismatch")
+                    raise OSError("SHA-256 mismatch")
                 fh.seek(0)
 
             else:
@@ -399,7 +395,7 @@ class _ArchiveTask(Task):
         return self._run_subcommand(unit.root, args, log_dir)
 
 
-class SnapshotArchiveSet(object):
+class SnapshotArchiveSet:
     def __init__(
         self, archiver, snapshot, count=None, size=None, complete=None, protected=None
     ):
@@ -456,7 +452,7 @@ class SnapshotArchiveSet(object):
         for archive in archives:
             out_path = os.path.join(
                 out_dir,
-                "%s:%s" % (self.snapshot.name, archive.unit_name.replace("/", "-")),
+                "{}:{}".format(self.snapshot.name, archive.unit_name.replace("/", "-")),
             )
             if not os.path.exists(out_path):
                 archive_lookup[archive.unit_name] = archive
@@ -480,7 +476,7 @@ class SnapshotArchiveSet(object):
                         sha256=result["sha256"],
                     ).to_file(out_path)
                     result = out_path
-                except Exception, e:
+                except Exception as e:
                     result = e
             yield (archive, result)
 
@@ -488,7 +484,7 @@ class SnapshotArchiveSet(object):
         self.archiver.delete_set(self.snapshot.name)
 
 
-class _Archive(object):
+class _Archive:
     def __init__(self, archiver, snapshot, unit_name, size=None):
         self.archiver = archiver
         self.snapshot = snapshot
@@ -566,9 +562,11 @@ def prune(settings, archiver):
     # ...but don't delete protected sets
     delete = [s for s in delete if not s.protected]
     for set in delete:
-        print "Pruning%s archive set %s" % (
-            " incomplete" if not set.complete else "",
-            set,
+        print(
+            "Pruning{} archive set {}".format(
+                " incomplete" if not set.complete else "",
+                set,
+            )
         )
         set.delete()
 
@@ -584,24 +582,25 @@ def cmd_run(config, args):
                 break
         else:
             raise ValueError("No such snapshot")
-        print "Archiving selected snapshot", snapshot
+        print("Archiving selected snapshot", snapshot)
     elif args.resume:
         set = SnapshotArchiveSet.list(archiver)[-1]
         snapshot = set.snapshot
         if set.complete:
             raise ValueError("%s already completely archived" % snapshot)
-        print "Resuming archive of snapshot", snapshot
+        print("Resuming archive of snapshot", snapshot)
     else:
         snapshot = PhysicalSnapshot.list()[-1]
-        print "Archiving snapshot", snapshot
+        print("Archiving snapshot", snapshot)
     snapshot = snapshot.get_physical(settings)
     with lockfile(settings, "archive"):
         if not archive_snapshot(config, archiver, snapshot):
-            print >> sys.stderr, (
+            print(
                 "Archiving failed for some units.  "
-                + "Not marking archive set complete."
+                "Not marking archive set complete.",
+                file=sys.stderr,
             )
-            print >> sys.stderr, 'Use "deltaic archive run -r" to resume.'
+            print('Use "deltaic archive run -r" to resume.', file=sys.stderr)
             return 1
 
 
@@ -618,19 +617,25 @@ def cmd_ls(config, args):
         if args.set and args.set != set.snapshot.name:
             continue
         if args.sets:
-            print "%s %5d %10s  %s %s" % (
-                set.snapshot.name,
-                set.count,
-                humanize_size(set.size),
-                "  complete" if set.complete else "incomplete",
-                "protected" if set.protected else "",
+            print(
+                "%s %5d %10s  %s %s"
+                % (
+                    set.snapshot.name,
+                    set.count,
+                    humanize_size(set.size),
+                    "  complete" if set.complete else "incomplete",
+                    "protected" if set.protected else "",
+                )
             )
         else:
             for _, archive in sorted(set.get_archives().items()):
-                print "%s %10s %s" % (
-                    archive.snapshot.name,
-                    humanize_size(archive.size),
-                    archive.unit_name,
+                print(
+                    "%s %10s %s"
+                    % (
+                        archive.snapshot.name,
+                        humanize_size(archive.size),
+                        archive.unit_name,
+                    )
                 )
 
 
@@ -642,16 +647,16 @@ def cmd_retrieve(config, args):
     max_rate = int(args.max_rate * (1 << 30)) if args.max_rate is not None else None
     make_dir_path(args.destdir)
     if not os.path.isdir(args.destdir):
-        raise IOError("Destination is not a directory")
+        raise OSError("Destination is not a directory")
     ret = 0
     for archive, result in set.retrieve_archives(
         args.destdir, archives, max_rate=max_rate
     ):
         if isinstance(result, Exception):
-            print >> sys.stderr, "%s: %s" % (archive.unit_name, result)
+            print(f"{archive.unit_name}: {result}", file=sys.stderr)
             ret = 1
         else:
-            print archive.unit_name
+            print(archive.unit_name)
     return ret
 
 
@@ -660,7 +665,7 @@ def cmd_unpack(config, args):
     packer = ArchivePacker(settings)
     make_dir_path(args.destdir)
     if not os.path.isdir(args.destdir):
-        raise IOError("Destination is not a directory")
+        raise OSError("Destination is not a directory")
     for file in args.file:
         packer.unpack(file, args.destdir)
 

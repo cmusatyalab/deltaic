@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014 Carnegie Mellon University
+# Copyright (c) 2014-2021 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -17,12 +17,13 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+import contextlib
 import json
 import os
 import subprocess
 import sys
 import time
-import xml.etree.cElementTree as ET
+import xml.etree.ElementTree as ET
 from multiprocessing import Pool
 
 import boto
@@ -50,15 +51,13 @@ KEY_METADATA_ATTRS = {
     "last_modified": "Last-Modified",
 }
 
-KEY_UPLOAD_HEADERS = set(
-    [
-        "cache-control",
-        "content-disposition",
-        "content-encoding",
-        "content-language",
-        "content-type",
-    ]
-)
+KEY_UPLOAD_HEADERS = {
+    "cache-control",
+    "content-disposition",
+    "content-encoding",
+    "content-language",
+    "content-type",
+}
 
 S3_NAMESPACE = "http://s3.amazonaws.com/doc/2006-03-01/"
 
@@ -68,12 +67,12 @@ SCRUB_ALL = 2
 
 
 def radosgw_admin(*args):
-    proc = subprocess.Popen(
-        ["radosgw-admin", "--format=json"] + list(args), stdout=subprocess.PIPE
-    )
-    out, _ = proc.communicate()
-    if proc.returncode:
-        raise IOError("radosgw-admin returned %d" % proc.returncode)
+    try:
+        out = subprocess.check_output(
+            ["radosgw-admin", "--format=json"] + list(args)
+        ).decode(sys.stdout.encoding)
+    except subprocess.CalledProcessError as e:
+        raise OSError("radosgw-admin returned %d" % e.returncode)
     return json.loads(out)
 
 
@@ -99,7 +98,7 @@ def connect(server, access_key, secret_key, secure=False):
 
 
 def add_type_code(path, code):
-    return path + "_" + code
+    return f"{path}_{code}"
 
 
 def split_type_code(path):
@@ -109,7 +108,6 @@ def split_type_code(path):
 
 
 def key_name_to_path(root_dir, key_name, type_code):
-    key_name = key_name.encode("utf-8")
     rel_dirpath, filename = os.path.split(key_name)
     # Don't rewrite root directory to "_d"
     if rel_dirpath:
@@ -129,7 +127,7 @@ def path_to_key_name(root_dir, path):
         components_out.append(component)
     component, _ = split_type_code(components_in[-1])
     components_out.append(component)
-    return "/".join(components_out).decode("utf-8")
+    return "/".join(components_out)
 
 
 def enumerate_keys(bucket):
@@ -218,22 +216,21 @@ def sync_key(args):
             return (key_name, None)
         else:
             return (None, None)
-    except Exception, e:
+    except Exception as e:
         for path in out_data, out_meta, out_acl:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(path)
-            except OSError:
-                pass
+
         if isinstance(e, boto.exception.BotoServerError):
             e = e.error_code
-        return (key_name, "Couldn't fetch %s: %s" % (key_name, e))
+        return (key_name, f"Couldn't fetch {key_name}: {e}")
 
 
 def sync_bucket(server, bucket_name, root_dir, workers, scrub, secure):
     warned = set()
 
     def warn(msg, *args):
-        print >> sys.stderr, msg % args
+        print(msg % args, file=sys.stderr)
         warned.add(True)
 
     # Connect
@@ -256,7 +253,7 @@ def sync_bucket(server, bucket_name, root_dir, workers, scrub, secure):
         if error:
             warn(error)
         elif path:
-            print path
+            print(path)
     pool.close()
     pool.join()
 
@@ -265,12 +262,10 @@ def sync_bucket(server, bucket_name, root_dir, workers, scrub, secure):
     path = key_name_to_path(root_dir, "bucket", "C")
     try:
         update_file(path, bucket.get_cors_xml())
-    except boto.exception.S3ResponseError, e:
+    except boto.exception.S3ResponseError as e:
         if e.status == 404:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(path)
-            except OSError:
-                pass
         else:
             raise
 
@@ -303,16 +298,14 @@ def sync_bucket(server, bucket_name, root_dir, workers, scrub, secure):
                             "Warning: Deleting file that we just created: %s", filepath
                         )
             if delete:
-                print "Deleting", filepath
+                print("Deleting", filepath)
                 try:
                     os.unlink(filepath)
-                except OSError, e:
+                except OSError as e:
                     warn("Couldn't unlink: %s", e)
-        try:
+
+        with contextlib.suppress(OSError):
             os.rmdir(dirpath)
-        except OSError:
-            # Directory not empty
-            pass
 
     # Return True on success, False if there were warnings
     return not warned
@@ -331,7 +324,7 @@ def upload_pool_init(root_dir_, server, bucket_name, secure):
 def get_owner_name(acl_xml):
     return (
         ET.fromstring(acl_xml)
-        .find("{%(ns)s}Owner/{%(ns)s}ID" % {"ns": S3_NAMESPACE})
+        .find("{{{ns}}}Owner/{{{ns}}}ID".format(ns=S3_NAMESPACE))
         .text
     )
 
@@ -360,26 +353,24 @@ def upload_key(args):
         with open(in_meta, "rb") as fh:
             meta = json.load(fh)
         key.metadata.update(meta["metadata"])
-        headers = dict(
-            (k, v) for k, v in meta.items() if k.lower() in KEY_UPLOAD_HEADERS
-        )
+        headers = {k: v for k, v in meta.items() if k.lower() in KEY_UPLOAD_HEADERS}
         with open(in_data, "rb") as fh:
             key.set_contents_from_file(fh, headers=headers)
         key.set_xml_acl(key_acl)
         return (key_name, None)
-    except Exception, e:
+    except Exception as e:
         if key:
             key.delete()
         if isinstance(e, boto.exception.BotoServerError):
             e = e.error_code
-        return (key_name, "Couldn't upload %s: %s" % (key_name, e))
+        return (key_name, f"Couldn't upload {key_name}: {e}")
 
 
 def restore_bucket(root_dir, server, dest_bucket_name, force, secure, workers):
     # Check for valid bucket dir
     bucket_acl_path = key_name_to_path(root_dir, "bucket", "A")
     if not os.path.exists(bucket_acl_path):
-        raise IOError("No backups at %s" % root_dir)
+        raise OSError("No backups at %s" % root_dir)
 
     # Get bucket ACL and owner
     with open(bucket_acl_path) as fh:
@@ -395,7 +386,7 @@ def restore_bucket(root_dir, server, dest_bucket_name, force, secure, workers):
     if bucket is None:
         bucket = conn.create_bucket(dest_bucket_name)
     elif not force and bucket.get_all_keys(max_keys=5):
-        raise IOError("Destination bucket is not empty; force with --force")
+        raise OSError("Destination bucket is not empty; force with --force")
 
     # Set bucket metadata
     bucket.set_xml_acl(bucket_acl)
@@ -409,9 +400,9 @@ def restore_bucket(root_dir, server, dest_bucket_name, force, secure, workers):
     iter = enumerate_keys_from_directory(root_dir)
     for path, error in pool.imap_unordered(upload_key, iter):
         if error:
-            raise IOError(error)
+            raise OSError(error)
         elif path:
-            print path
+            print(path)
     pool.close()
     pool.join()
 

@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2015 Carnegie Mellon University
+# Copyright (c) 2015-2021 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -55,11 +55,12 @@ DEFAULT_CREDENTIALS_FILE = "deltaic-googledrive-credentials.json"
 
 def foreverholdyourpeace(message, delay=10, file=sys.stdout):
     for remaining in range(delay, -1, -1):
-        print >> file, ("\r%s in %d seconds. " % (message, remaining)),
-        file.flush()
+        print(
+            "\r%s in %d seconds. " % (message, remaining), end="", file=file, flush=True
+        )
         if remaining:
             time.sleep(1)
-    print >> file, "\r%s.                 " % message
+    print("\r%s.                 " % message, file=file)
 
 
 def _default_drive_credentials_path(settings):
@@ -85,7 +86,7 @@ def cmd_googledrive_auth(config, args):
     client_secret = settings.get("googledrive-client-secret")
 
     if not client_id or not client_secret:
-        print "Missing client id or secret, check setup instructions"
+        print("Missing client id or secret, check setup instructions")
         return -1
 
     flow = client.OAuth2WebServerFlow(
@@ -94,8 +95,8 @@ def cmd_googledrive_auth(config, args):
     flow.user_agent = "Deltaic"
 
     authorize_url = flow.step1_get_authorize_url()
-    print "Go to the following link in your browser: " + authorize_url
-    code = raw_input("Enter verification code: ").strip()
+    print("Go to the following link in your browser:", authorize_url)
+    code = input("Enter verification code: ").strip()
     credentials = flow.step2_exchange(code)
 
     # write credentials to file
@@ -115,7 +116,7 @@ def cmd_googledrive_test(config, args):
 
     # get metadata for appfolder
     result = service.files().get(fileId="appfolder").execute()
-    print json.dumps(result, indent=1)
+    print(json.dumps(result, indent=1))
 
 
 def cmd_googledrive_ls(config, args):
@@ -124,7 +125,7 @@ def cmd_googledrive_ls(config, args):
 
     # list all files that we have access to
     result = service.files().list().execute()
-    print json.dumps(result["items"], indent=1)
+    print(json.dumps(result["items"], indent=1))
 
 
 def cmd_googledrive_rm(config, args):
@@ -132,11 +133,11 @@ def cmd_googledrive_rm(config, args):
     service = _get_drive_service(settings)
 
     result = service.files().get(fileId=args.fileid).execute()
-    foreverholdyourpeace("Deleting %s (%s)" % (result["title"], args.fileid))
+    foreverholdyourpeace("Deleting {} ({})".format(result["title"], args.fileid))
     service.files().delete(fileId=args.fileid).execute()
 
 
-class _PartialFile(object):
+class _PartialFile:
     def __init__(self, f, start, length):
         self._file = f
 
@@ -196,8 +197,7 @@ class DriveArchiver(Archiver):
         while True:
             result = self._service.files().list(**param).execute()
 
-            for item in result["items"]:
-                yield item
+            yield from result["items"]
 
             page_token = result.get("nextPageToken")
             if not page_token:
@@ -230,9 +230,9 @@ class DriveArchiver(Archiver):
             set_name = archiveset["title"]
             set_id = archiveset["id"]
 
-            properties = dict(
-                (p["key"], p["value"]) for p in archiveset.get("properties", [])
-            )
+            properties = {
+                p["key"]: p["value"] for p in archiveset.get("properties", [])
+            }
             archive_sizes = [
                 int(item["fileSize"]) for item in self._list_folder(set_id)
             ]
@@ -284,9 +284,7 @@ class DriveArchiver(Archiver):
 
         archives = {}
         for archive in self._list_folder(set_id):
-            properties = dict(
-                (p["key"], p["value"]) for p in archive.get("properties", [])
-            )
+            properties = {p["key"]: p["value"] for p in archive.get("properties", [])}
             if properties.get("googledrive-part", "1") != "1":
                 continue
 
@@ -317,7 +315,7 @@ class DriveArchiver(Archiver):
             props = dict(metadata)
             props["googledrive-parts"] = str(parts)
 
-            for part in xrange(parts):
+            for part in range(parts):
                 props["googledrive-part"] = str(part + 1)
 
                 offset = part * self.MAX_FILESIZE
@@ -357,15 +355,20 @@ class DriveArchiver(Archiver):
                         progress, done = media_req.next_chunk(num_retries=5)
                         if progress:
                             pct = int(progress.progress() * 100)
-                            print >> sys.stderr, "\r(%d/%d) progress: %d%%   " % (
-                                N,
-                                M,
-                                pct,
-                            ),
+                            print(
+                                "\r(%d/%d) progress: %d%%   "
+                                % (
+                                    N,
+                                    M,
+                                    pct,
+                                ),
+                                end="",
+                                file=sys.stderr,
+                            )
                         if done:
                             break
                 finally:
-                    print >> sys.stderr, ""
+                    print("", file=sys.stderr)
 
     def download_archives(self, set_name, archive_list, max_rate=None):
         set_id = self._find_set_id(set_name)
@@ -374,9 +377,9 @@ class DriveArchiver(Archiver):
 
         idmap = {}
         for archive_part in self._list_folder(set_id):
-            properties = dict(
-                (p["key"], p["value"]) for p in archive_part.get("properties", [])
-            )
+            properties = {
+                p["key"]: p["value"] for p in archive_part.get("properties", [])
+            }
             N = int(properties.get("googledrive-part", "1"))
             M = int(properties.get("googledrive-parts", "1"))
 
@@ -412,16 +415,19 @@ class DriveArchiver(Archiver):
 
         for archive_name, archive_path, archive in archives:
             archive_size = sum(int(part["fileSize"]) for part in archive)
-            print "Retrieving %s (%d bytes/%d part(s))" % (
-                archive_name,
-                archive_size,
-                len(archive),
+            print(
+                "Retrieving %s (%d bytes/%d part(s))"
+                % (
+                    archive_name,
+                    archive_size,
+                    len(archive),
+                )
             )
 
             # pull archive metadata from first part
-            archive_metadata = dict(
-                (prop["key"], prop["value"]) for prop in archive[0]["properties"]
-            )
+            archive_metadata = {
+                prop["key"]: prop["value"] for prop in archive[0]["properties"]
+            }
 
             try:
                 self._download_archive(archive, archive_path)
@@ -450,11 +456,14 @@ which costs $%(storage_cost).2f/month.
             if total_size <= tier:
                 break
 
-        print msg % {
-            "total_size": humanize_size(total_size),
-            "storage_size": humanize_size(tier),
-            "storage_cost": cost,
-        }
+            print(
+                msg
+                % {
+                    "total_size": humanize_size(total_size),
+                    "storage_size": humanize_size(tier),
+                    "storage_cost": cost,
+                }
+            )
 
 
 def _setup():

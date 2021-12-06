@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014 Carnegie Mellon University
+# Copyright (c) 2014-2021 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -96,7 +96,7 @@ def cmd_prune(config, args):
     remove = select_snapshots_to_remove(settings, snapshots)
     for cur in sorted(remove):
         if args.dry_run:
-            print cur
+            print(cur)
         else:
             cur.remove(verbose=args.verbose)
 

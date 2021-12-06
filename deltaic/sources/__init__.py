@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014 Carnegie Mellon University
+# Copyright (c) 2014-2021 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -17,19 +17,19 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+import contextlib
 import os
+import queue
 import subprocess
 import sys
 from datetime import date, datetime
 from threading import Thread
 
-import Queue
-
 from ..command import get_cmdline_for_subcommand
 from ..util import make_dir_path
 
 
-class Unit(object):
+class Unit:
     def __init__(self):
         self.root = None
         self.backup_args = None
@@ -38,14 +38,14 @@ class Unit(object):
         return self.root
 
 
-class Task(object):
+class Task:
     DATE_FMT = "%Y%m%d"
     LOG_EXCERPT_INPUT_BYTES = 8192
     LOG_EXCERPT_MAX_BYTES = 4096
     LOG_EXCERPT_MAX_LINES = 10
 
     def __init__(self, thread_count, units):
-        self._queue = Queue.Queue()
+        self._queue = queue.Queue()
         for unit in units:
             self._queue.put(unit)
         self._success = True
@@ -59,12 +59,12 @@ class Task(object):
         while True:
             try:
                 unit = self._queue.get_nowait()
-            except Queue.Empty:
+            except queue.Empty:
                 return
             try:
                 if not self._execute(unit):
                     self._success = False
-            except:
+            except BaseException:
                 self._success = False
                 raise
 
@@ -78,26 +78,30 @@ class Task(object):
 
     def _run_subcommand(self, name, args, log_dir):
         log_base = os.path.join(log_dir, date.today().strftime(self.DATE_FMT))
-        timestamp = lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        def timestamp():
+            return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         sys.stdout.write("Starting %s\n" % name)
         command = get_cmdline_for_subcommand(args)
-        with open("/dev/null", "r+") as null:
-            with open(log_base + ".err", "a") as err:
-                with open(log_base + ".out", "a") as out:
-                    for fh in out, err:
-                        fh.write("# Starting task at %s\n" % timestamp())
-                        fh.write("# %s\n" % " ".join(command))
-                        fh.flush()
-                    ret = subprocess.call(
-                        command, stdin=null, stdout=out, stderr=err, close_fds=True
-                    )
-                    for fh in out, err:
-                        if ret < 0:
-                            fh.write("# Task died on signal %d\n" % -ret)
-                        else:
-                            fh.write("# Task exited with status %d\n" % ret)
-                        fh.write("# Ending task at %s\n\n" % timestamp())
+        with contextlib.ExitStack() as stack:
+            null = stack.enter_context(open("/dev/null", "r+"))
+            err = stack.enter_context(open(log_base + ".err", "a"))
+            out = stack.enter_context(open(log_base + ".out", "a"))
+
+            for fh in out, err:
+                fh.write("# Starting task at %s\n" % timestamp())
+                fh.write("# %s\n" % " ".join(command))
+                fh.flush()
+            ret = subprocess.call(
+                command, stdin=null, stdout=out, stderr=err, close_fds=True
+            )
+            for fh in out, err:
+                if ret < 0:
+                    fh.write("# Task died on signal %d\n" % -ret)
+                else:
+                    fh.write("# Task exited with status %d\n" % ret)
+                fh.write("# Ending task at %s\n\n" % timestamp())
 
         if ret:
             with open(log_base + ".err") as err:
@@ -135,7 +139,7 @@ class Task(object):
                 # Serialize
                 excerpt = "\n".join(" " * 3 + l for l in excerpt_lines)
             sys.stderr.write(
-                "Failed:  %s\n   %s\n%s\n" % (name, " ".join(command), excerpt)
+                "Failed:  {}\n   {}\n{}\n".format(name, " ".join(command), excerpt)
             )
 
         sys.stdout.write("Ending   %s\n" % name)
@@ -152,7 +156,7 @@ class _SourceBackupTask(Task):
         return self._run_subcommand(unit.root, unit.backup_args, log_dir)
 
 
-class Source(object):
+class Source:
     def __init__(self, config):
         self._settings = config.get("settings", {})
         self._manifest = config.get(self.LABEL, {})

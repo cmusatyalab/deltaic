@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014 Carnegie Mellon University
+# Copyright (c) 2014-2021 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -17,6 +17,7 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+import contextlib
 import json
 import os
 import re
@@ -59,19 +60,19 @@ def timestamp_str(timestamp):
 
 
 def gc_report(path, is_dir):
-    print "-", path
+    print("-", path)
 
 
 def write_json(path, info, timestamp=None):
     if update_file(path, json.dumps(info, sort_keys=True) + "\n"):
-        print "f", path
+        print("f", path)
     if timestamp is not None:
         mtime = datetime_to_time_t(timestamp)
         if os.stat(path).st_mtime != mtime:
             os.utime(path, (mtime, mtime))
 
 
-class cond_iter(object):
+class cond_iter:
     """An iterable that wraps a github3 iterator, enabling conditional
     requests.  The ETag is saved as an xattr on the specified path.  func is
     the github3 iter_* function.  If scrub is True, perform the request
@@ -89,8 +90,7 @@ class cond_iter(object):
 
     def __iter__(self):
         iter = self._func()
-        for item in iter:
-            yield item
+        yield from iter
         if iter.etag:
             self._attrs.update(ATTR_ETAG, iter.etag)
         self.skipped = iter.last_status == 304
@@ -122,7 +122,7 @@ def update_git(
 
     for tries_remaining in range(GIT_ATTEMPTS - 1, -1, -1):
         try:
-            print " ".join(cmd)
+            print(" ".join(cmd))
             subprocess.check_call(cmd, cwd=cwd, env=env)
             break
         except subprocess.CalledProcessError:
@@ -134,7 +134,7 @@ def update_git(
 
     if scrub:
         cmd = [git_path, "fsck", "--no-dangling", "--no-progress"]
-        print " ".join(cmd)
+        print(" ".join(cmd))
         subprocess.check_call(cmd, cwd=root_dir)
 
 
@@ -147,15 +147,13 @@ def update_issues(repo, root_dir, scrub=False):
     for issue in issue_iter:
         path = os.path.join(issue_dir, "%d.json" % issue.number)
         valid_paths.add(path)
-        try:
+        with contextlib.suppress(OSError):
             # We need to make additional requests to get comments and events.
             # Avoid if possible.
             if not scrub and os.stat(path).st_mtime == datetime_to_time_t(
                 issue.updated_at
             ):
                 continue
-        except OSError:
-            pass
 
         if issue.comments:
             comments = [
@@ -288,17 +286,15 @@ def update_releases(repo, root_dir, scrub=False):
             mtime = datetime_to_time_t(asset.updated_at)
             valid_paths.add(asset_path)
 
-            try:
+            with contextlib.suppress(OSError):
                 st = os.stat(asset_path)
                 if not scrub and st.st_mtime == mtime and st.st_size == asset.size:
                     continue
-            except OSError:
-                pass
 
             with UpdateFile(asset_path) as fh:
                 asset.download(fh)
             if fh.modified:
-                print "f", asset_path
+                print("f", asset_path)
             if os.stat(asset_path).st_mtime != mtime:
                 os.utime(asset_path, (mtime, mtime))
             XAttrs(asset_path).update(
@@ -335,7 +331,7 @@ def sync_repo(repo, root_dir, token, scrub=False, git_path=None):
         # The wiki repo doesn't necessarily exist, even though the API
         # claims it does.  Ignore errors during initial clone.
         update_git(
-            re.sub("\.git$", ".wiki", repo.clone_url),
+            re.sub(r"\.git$", ".wiki", repo.clone_url),
             os.path.join(root_dir, "wiki"),
             token,
             scrub=scrub,
@@ -383,13 +379,13 @@ def cmd_github_auth(config, args):
             gh.rate_limit()
             return
         except github3.GitHubError:
-            print "Stored token was not accepted; reauthorizing"
+            print("Stored token was not accepted; reauthorizing")
 
-    user = raw_input("Username: ")
+    user = input("Username: ")
     passwd = getpass()
 
     def get_2fa_code():
-        return raw_input("Two-factor authentication code: ")
+        return input("Two-factor authentication code: ")
 
     gh = github_login(user, passwd, two_factor_callback=get_2fa_code)
     auth = gh.authorize(user, passwd, OAUTH_SCOPES, TOKEN_NOTE, TOKEN_NOTE_URL)
@@ -398,7 +394,7 @@ def cmd_github_auth(config, args):
             "github-token": auth.token,
         }
     }
-    print "\n" + yaml.safe_dump(structured, default_flow_style=False).strip()
+    print("\n" + yaml.safe_dump(structured, default_flow_style=False).strip())
 
 
 def get_relroot(organization, repo=None):
@@ -425,7 +421,7 @@ def cmd_github_backup(config, args):
         root_dir = os.path.join(settings["root"], get_relroot(args.organization))
         sync_org(gh.organization(args.organization), root_dir)
 
-    print gh.ratelimit_remaining, "requests left in quota"
+    print(gh.ratelimit_remaining, "requests left in quota")
 
 
 def cmd_github_ls(config, args):
@@ -433,7 +429,7 @@ def cmd_github_ls(config, args):
     gh = github_login(token=settings["github-token"])
     org = gh.organization(args.organization)
     for repo in sorted(org.iter_repos(), key=lambda r: r.name.lower()):
-        print repo.name
+        print(repo.name)
 
 
 def _setup():
@@ -487,12 +483,12 @@ class GitHubSource(Source):
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
             out, _ = proc.communicate()
             if proc.returncode:
-                raise IOError("Couldn't list GitHub repos for %s" % org)
+                raise OSError("Couldn't list GitHub repos for %s" % org)
             repos = [r for r in out.split("\n") if r]
             # Update org metadata
             if info.get("organization-metadata", True):
                 ret.append(GitHubUnit(self._settings, org))
             # Update repos
             for repo in repos:
-                ret.append(GitHubUnit(self._settings, org, repo))
+                ret.append(GitHubUnit(self._settings, org, repo.name))
         return ret

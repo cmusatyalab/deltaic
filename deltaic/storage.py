@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014 Carnegie Mellon University
+# Copyright (c) 2014-2021 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -17,7 +17,6 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from __future__ import division
 
 import os
 import subprocess
@@ -27,7 +26,7 @@ from .command import subparsers
 from .util import humanize_size, make_dir_path
 
 
-class Snapshot(object):
+class Snapshot:
     DATE_FMT = "%Y%m%d"
 
     def __init__(self, name):
@@ -74,20 +73,23 @@ class PhysicalSnapshot(Snapshot):
         self.vg = vg
 
     def __repr__(self):
-        return "PhysicalSnapshot(%s, %s)" % (repr(self.vg), repr(self.name))
+        return f"PhysicalSnapshot({repr(self.vg)}, {repr(self.name)})"
+
+    def __lt__(self, other):
+        return self.vg < other.vg or self.vg == other.vg and self.name < other.name
 
     def get_physical(self, settings):
         return self
 
     @classmethod
     def list(cls):
-        proc = subprocess.Popen(
-            ["sudo", "lvs", "--noheadings", "-o", "vg_name,lv_name", "@" + cls.TAG],
-            stdout=subprocess.PIPE,
-        )
-        out, _ = proc.communicate()
-        if proc.returncode:
-            raise IOError("Couldn't list snapshot LVs")
+        try:
+            out = subprocess.check_output(
+                ["sudo", "lvs", "--noheadings", "-o", "vg_name,lv_name", "@" + cls.TAG],
+            ).decode(sys.stdout.encoding)
+        except subprocess.CalledProcessError:
+            raise OSError("Couldn't list snapshot LVs")
+
         ret = []
         for line in out.split("\n"):
             if not line:
@@ -105,20 +107,20 @@ class PhysicalSnapshot(Snapshot):
             for n in range(1, 100):
                 snapshot_lv = "%s-%d" % (today, n)
                 ret = subprocess.call(
-                    ["sudo", "lvs", "%s/%s" % (vg, snapshot_lv)],
+                    ["sudo", "lvs", f"{vg}/{snapshot_lv}"],
                     stdout=null,
                     stderr=null,
                 )
                 if ret:
                     break
             else:
-                raise IOError("Couldn't locate unused snapshot LV")
+                raise OSError("Couldn't locate unused snapshot LV")
             subprocess.check_call(
                 [
                     "sudo",
                     "lvcreate",
                     "-s",
-                    "%s/%s" % (vg, lv),
+                    f"{vg}/{lv}",
                     "-p",
                     "r",
                     "-n",
@@ -134,14 +136,14 @@ class PhysicalSnapshot(Snapshot):
     def remove(self, verbose=False):
         with open("/dev/null", "r+") as null:
             subprocess.check_call(
-                ["sudo", "lvremove", "--force", "%s/%s" % (self.vg, self.name)],
+                ["sudo", "lvremove", "--force", f"{self.vg}/{self.name}"],
                 stdin=null,
                 stdout=None if verbose else null,
             )
 
     def mount(self, mountpoint):
         subprocess.check_call(
-            ["sudo", "lvchange", "-a", "y", "-K", "%s/%s" % (self.vg, self.name)]
+            ["sudo", "lvchange", "-a", "y", "-K", f"{self.vg}/{self.name}"]
         )
         subprocess.check_call(
             [
@@ -149,7 +151,7 @@ class PhysicalSnapshot(Snapshot):
                 "mount",
                 "-o",
                 "ro",
-                "/dev/%s/%s" % (self.vg, self.name),
+                f"/dev/{self.vg}/{self.name}",
                 mountpoint,
             ]
         )
@@ -157,10 +159,10 @@ class PhysicalSnapshot(Snapshot):
     def umount(self, mountpoint):
         subprocess.check_call(["sudo", "umount", mountpoint])
         # May fail if double-mounted
-        subprocess.call(["sudo", "lvchange", "-a", "n", "%s/%s" % (self.vg, self.name)])
+        subprocess.call(["sudo", "lvchange", "-a", "n", f"{self.vg}/{self.name}"])
 
 
-class StorageStatus(object):
+class StorageStatus:
     def __init__(self, vg, lv, mountpoint):
         # Get filesystem stats
         st = os.statvfs(mountpoint)
@@ -170,37 +172,35 @@ class StorageStatus(object):
         self.ino_free_pct = 100 * st.f_favail / st.f_files
 
         # Find pool LV
-        proc = subprocess.Popen(
-            ["sudo", "lvs", "--noheadings", "-o", "pool_lv", "%s/%s" % (vg, lv)],
-            stdout=subprocess.PIPE,
-        )
-        out, _ = proc.communicate()
-        if proc.returncode:
-            raise IOError(
-                "Couldn't retrieve pool LV: lvs returned %d" % proc.returncode
-            )
+        try:
+            out = subprocess.check_output(
+                ["sudo", "lvs", "--noheadings", "-o", "pool_lv", f"{vg}/{lv}"],
+            ).decode(sys.stdout.encoding)
+        except subprocess.CalledProcessError as e:
+            raise OSError("Couldn't retrieve pool LV: lvs returned %d" % e.returncode)
+
         pool_lv = out.strip()
         if not pool_lv:
-            raise IOError("Couldn't retrieve pool LV")
+            raise OSError("Couldn't retrieve pool LV")
 
         # Get pool LV stats
-        proc = subprocess.Popen(
-            [
-                "sudo",
-                "lvs",
-                "--noheadings",
-                "--nosuffix",
-                "--units",
-                "b",
-                "-o",
-                "lv_size,data_percent,lv_metadata_size,metadata_percent",
-                "%s/%s" % (vg, pool_lv),
-            ],
-            stdout=subprocess.PIPE,
-        )
-        out, _ = proc.communicate()
-        if proc.returncode:
-            raise IOError("Couldn't examine pool LV: lvs returned %d" % proc.returncode)
+        try:
+            out = subprocess.check_output(
+                [
+                    "sudo",
+                    "lvs",
+                    "--noheadings",
+                    "--nosuffix",
+                    "--units",
+                    "b",
+                    "-o",
+                    "lv_size,data_percent,lv_metadata_size,metadata_percent",
+                    f"{vg}/{pool_lv}",
+                ],
+            ).decode(sys.stdout.encoding)
+        except subprocess.CalledProcessError as e:
+            raise OSError("Couldn't examine pool LV: lvs returned %d" % e.returncode)
+
         vals = [float(v) for v in out.split()]
         data_size, data_pct, meta_size, meta_pct = vals
         self.lv_free_data = data_size * (100 - data_pct) / 100
@@ -227,7 +227,7 @@ class StorageStatus(object):
             else:
                 value = str(value) + 4 * " "
             if pct < pct_threshold:
-                print "%-25s %14s (%4.1f%%)" % (label + ":", value, pct)
+                print("%-25s %14s (%4.1f%%)" % (label + ":", value, pct))
                 printed = True
         return printed
 
@@ -247,7 +247,7 @@ def cmd_df(config, args):
 
 def cmd_ls(config, args):
     for snapshot in PhysicalSnapshot.list():
-        print snapshot
+        print(snapshot)
 
 
 def cmd_mount(config, args):
@@ -257,10 +257,10 @@ def cmd_mount(config, args):
         mountpoint = make_dir_path(settings["root"], "Snapshots", snapshot.name)
         try:
             snapshot.mount(mountpoint)
-        except:
+        except BaseException:
             os.rmdir(mountpoint)
             raise
-        print mountpoint
+        print(mountpoint)
 
 
 def cmd_umount(config, args):
