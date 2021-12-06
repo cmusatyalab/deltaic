@@ -30,7 +30,7 @@ to use `fsync`.)
 **No unnecessary writes.**  Assume that all backup data is subject to
 copy-on-write by the LVM layer.  Avoid unnecessary COW by writing data or
 metadata only if it has changed.  Never unconditionally update an `mtime`
-"just to be sure"; `stat` the file first to check its current `mtime`. 
+"just to be sure"; `stat` the file first to check its current `mtime`.
 Likewise with extended attributes.  Use `UpdateFile`, `update_file`, and the
 `XAttrs` wrapper class to conditionally update file data and xattrs.
 

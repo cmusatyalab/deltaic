@@ -18,19 +18,21 @@
 #
 
 from __future__ import division
-from datetime import date, datetime
+
 import os
 import subprocess
+from datetime import date, datetime
 
 from .command import subparsers
-from .util import make_dir_path, humanize_size
+from .util import humanize_size, make_dir_path
+
 
 class Snapshot(object):
-    DATE_FMT = '%Y%m%d'
+    DATE_FMT = "%Y%m%d"
 
     def __init__(self, name):
         self.name = name
-        datecode, revision = name.split('-')
+        datecode, revision = name.split("-")
         self.date = datetime.strptime(datecode, self.DATE_FMT).date()
         self.revision = int(revision)
         self.year, self.week, self.day = self.date.isocalendar()
@@ -41,7 +43,7 @@ class Snapshot(object):
         return str(self.name)
 
     def __repr__(self):
-        return 'Snapshot(%s)' % repr(self.name)
+        return "Snapshot(%s)" % repr(self.name)
 
     def __cmp__(self, other):
         if not isinstance(other, self.__class__):
@@ -59,34 +61,35 @@ class Snapshot(object):
 
     @classmethod
     def _get_backup_vg_lv(cls, settings):
-        return settings['backup-lv'].split('/')
+        return settings["backup-lv"].split("/")
 
 
 class PhysicalSnapshot(Snapshot):
-    TAG = 'backup-snapshot'
+    TAG = "backup-snapshot"
 
     def __init__(self, vg, name):
-        if '/' in name:
-            raise ValueError('Invalid snapshot name: %s' % name)
+        if "/" in name:
+            raise ValueError("Invalid snapshot name: %s" % name)
         Snapshot.__init__(self, name)
         self.vg = vg
 
     def __repr__(self):
-        return 'PhysicalSnapshot(%s, %s)' % (repr(self.vg), repr(self.name))
+        return "PhysicalSnapshot(%s, %s)" % (repr(self.vg), repr(self.name))
 
     def get_physical(self, settings):
         return self
 
     @classmethod
     def list(cls):
-        proc = subprocess.Popen(['sudo', 'lvs', '--noheadings',
-                '-o', 'vg_name,lv_name', '@' + cls.TAG],
-                stdout=subprocess.PIPE)
+        proc = subprocess.Popen(
+            ["sudo", "lvs", "--noheadings", "-o", "vg_name,lv_name", "@" + cls.TAG],
+            stdout=subprocess.PIPE,
+        )
         out, _ = proc.communicate()
         if proc.returncode:
             raise IOError("Couldn't list snapshot LVs")
         ret = []
-        for line in out.split('\n'):
+        for line in out.split("\n"):
             if not line:
                 continue
             vg, lv = line.split()
@@ -97,39 +100,64 @@ class PhysicalSnapshot(Snapshot):
     def create(cls, settings, verbose=False):
         vg, lv = cls._get_backup_vg_lv(settings)
         today = date.today().strftime(cls.DATE_FMT)
-        with open('/dev/null', 'r+') as null:
+        with open("/dev/null", "r+") as null:
             # Give up eventually in case test keeps failing
             for n in range(1, 100):
-                snapshot_lv = '%s-%d' % (today, n)
-                ret = subprocess.call(['sudo', 'lvs',
-                        '%s/%s' % (vg, snapshot_lv)], stdout=null, stderr=null)
+                snapshot_lv = "%s-%d" % (today, n)
+                ret = subprocess.call(
+                    ["sudo", "lvs", "%s/%s" % (vg, snapshot_lv)],
+                    stdout=null,
+                    stderr=null,
+                )
                 if ret:
                     break
             else:
                 raise IOError("Couldn't locate unused snapshot LV")
-            subprocess.check_call(['sudo', 'lvcreate',
-                    '-s', '%s/%s' % (vg, lv), '-p', 'r', '-n', snapshot_lv,
-                    '--addtag', cls.TAG], stdin=null,
-                    stdout=None if verbose else null)
+            subprocess.check_call(
+                [
+                    "sudo",
+                    "lvcreate",
+                    "-s",
+                    "%s/%s" % (vg, lv),
+                    "-p",
+                    "r",
+                    "-n",
+                    snapshot_lv,
+                    "--addtag",
+                    cls.TAG,
+                ],
+                stdin=null,
+                stdout=None if verbose else null,
+            )
         return cls(vg, snapshot_lv)
 
     def remove(self, verbose=False):
-        with open('/dev/null', 'r+') as null:
-            subprocess.check_call(['sudo', 'lvremove', '--force',
-                    '%s/%s' % (self.vg, self.name)], stdin=null,
-                    stdout=None if verbose else null)
+        with open("/dev/null", "r+") as null:
+            subprocess.check_call(
+                ["sudo", "lvremove", "--force", "%s/%s" % (self.vg, self.name)],
+                stdin=null,
+                stdout=None if verbose else null,
+            )
 
     def mount(self, mountpoint):
-        subprocess.check_call(['sudo', 'lvchange', '-a', 'y', '-K',
-                '%s/%s' % (self.vg, self.name)])
-        subprocess.check_call(['sudo', 'mount', '-o', 'ro',
-                '/dev/%s/%s' % (self.vg, self.name), mountpoint])
+        subprocess.check_call(
+            ["sudo", "lvchange", "-a", "y", "-K", "%s/%s" % (self.vg, self.name)]
+        )
+        subprocess.check_call(
+            [
+                "sudo",
+                "mount",
+                "-o",
+                "ro",
+                "/dev/%s/%s" % (self.vg, self.name),
+                mountpoint,
+            ]
+        )
 
     def umount(self, mountpoint):
-        subprocess.check_call(['sudo', 'umount', mountpoint])
+        subprocess.check_call(["sudo", "umount", mountpoint])
         # May fail if double-mounted
-        subprocess.call(['sudo', 'lvchange', '-a', 'n',
-                '%s/%s' % (self.vg, self.name)])
+        subprocess.call(["sudo", "lvchange", "-a", "n", "%s/%s" % (self.vg, self.name)])
 
 
 class StorageStatus(object):
@@ -142,25 +170,37 @@ class StorageStatus(object):
         self.ino_free_pct = 100 * st.f_favail / st.f_files
 
         # Find pool LV
-        proc = subprocess.Popen(['sudo', 'lvs', '--noheadings',
-                '-o', 'pool_lv', '%s/%s' % (vg, lv)], stdout=subprocess.PIPE)
+        proc = subprocess.Popen(
+            ["sudo", "lvs", "--noheadings", "-o", "pool_lv", "%s/%s" % (vg, lv)],
+            stdout=subprocess.PIPE,
+        )
         out, _ = proc.communicate()
         if proc.returncode:
-            raise IOError("Couldn't retrieve pool LV: lvs returned %d" %
-                    proc.returncode)
+            raise IOError(
+                "Couldn't retrieve pool LV: lvs returned %d" % proc.returncode
+            )
         pool_lv = out.strip()
         if not pool_lv:
             raise IOError("Couldn't retrieve pool LV")
 
         # Get pool LV stats
-        proc = subprocess.Popen(['sudo', 'lvs', '--noheadings', '--nosuffix',
-                '--units', 'b',
-                '-o', 'lv_size,data_percent,lv_metadata_size,metadata_percent',
-                '%s/%s' % (vg, pool_lv)], stdout=subprocess.PIPE)
+        proc = subprocess.Popen(
+            [
+                "sudo",
+                "lvs",
+                "--noheadings",
+                "--nosuffix",
+                "--units",
+                "b",
+                "-o",
+                "lv_size,data_percent,lv_metadata_size,metadata_percent",
+                "%s/%s" % (vg, pool_lv),
+            ],
+            stdout=subprocess.PIPE,
+        )
         out, _ = proc.communicate()
         if proc.returncode:
-            raise IOError("Couldn't examine pool LV: lvs returned %d" %
-                    proc.returncode)
+            raise IOError("Couldn't examine pool LV: lvs returned %d" % proc.returncode)
         vals = [float(v) for v in out.split()]
         data_size, data_pct, meta_size, meta_pct = vals
         self.lv_free_data = data_size * (100 - data_pct) / 100
@@ -170,12 +210,15 @@ class StorageStatus(object):
 
     def report(self, pct_threshold=100):
         data = (
-            ('Free filesystem space', True, self.fs_free, self.fs_free_pct),
-            ('Free inodes', False, self.ino_free, self.ino_free_pct),
-            ('Free LVM data space', True, self.lv_free_data,
-                    self.lv_free_data_pct),
-            ('Free LVM metadata space', True, self.lv_free_metadata,
-                    self.lv_free_metadata_pct),
+            ("Free filesystem space", True, self.fs_free, self.fs_free_pct),
+            ("Free inodes", False, self.ino_free, self.ino_free_pct),
+            ("Free LVM data space", True, self.lv_free_data, self.lv_free_data_pct),
+            (
+                "Free LVM metadata space",
+                True,
+                self.lv_free_metadata,
+                self.lv_free_metadata_pct,
+            ),
         )
         printed = False
         for label, humanize, value, pct in data:
@@ -184,17 +227,17 @@ class StorageStatus(object):
             else:
                 value = str(value) + 4 * " "
             if pct < pct_threshold:
-                print '%-25s %14s (%4.1f%%)' % (label + ':', value, pct)
+                print "%-25s %14s (%4.1f%%)" % (label + ":", value, pct)
                 printed = True
         return printed
 
 
 def cmd_df(config, args):
-    settings = config['settings']
-    vg, lv = settings['backup-lv'].split('/')
-    status = StorageStatus(vg, lv, settings['root'])
+    settings = config["settings"]
+    vg, lv = settings["backup-lv"].split("/")
+    status = StorageStatus(vg, lv, settings["root"])
     if args.check:
-        threshold = settings.get('df-warning', 5)
+        threshold = settings.get("df-warning", 5)
     else:
         threshold = 100
     printed = status.report(threshold)
@@ -208,11 +251,10 @@ def cmd_ls(config, args):
 
 
 def cmd_mount(config, args):
-    settings = config['settings']
+    settings = config["settings"]
     snapshots = [Snapshot(s).get_physical(settings) for s in args.snapshot]
     for snapshot in snapshots:
-        mountpoint = make_dir_path(settings['root'], 'Snapshots',
-                snapshot.name)
+        mountpoint = make_dir_path(settings["root"], "Snapshots", snapshot.name)
         try:
             snapshot.mount(mountpoint)
         except:
@@ -222,18 +264,20 @@ def cmd_mount(config, args):
 
 
 def cmd_umount(config, args):
-    settings = config['settings']
-    root_dir = settings['root']
-    snapshot_dir = os.path.join(root_dir, 'Snapshots')
+    settings = config["settings"]
+    root_dir = settings["root"]
+    snapshot_dir = os.path.join(root_dir, "Snapshots")
     if args.all:
         root_dev = os.stat(root_dir).st_dev
-        snapshots = [name for name in sorted(os.listdir(snapshot_dir))
-                if os.stat(os.path.join(snapshot_dir, name)).st_dev !=
-                root_dev]
+        snapshots = [
+            name
+            for name in sorted(os.listdir(snapshot_dir))
+            if os.stat(os.path.join(snapshot_dir, name)).st_dev != root_dev
+        ]
     else:
         snapshots = args.snapshot
         if not snapshots:
-            raise ValueError('At least one snapshot must be specified')
+            raise ValueError("At least one snapshot must be specified")
     snapshots = [Snapshot(s).get_physical(settings) for s in snapshots]
     for snapshot in snapshots:
         mountpoint = os.path.join(snapshot_dir, snapshot.name)
@@ -242,28 +286,25 @@ def cmd_umount(config, args):
 
 
 def _setup():
-    parser = subparsers.add_parser('df',
-            help='report available disk space')
+    parser = subparsers.add_parser("df", help="report available disk space")
     parser.set_defaults(func=cmd_df)
-    parser.add_argument('-c', '--check', action='store_true',
-            help='only report problems')
+    parser.add_argument(
+        "-c", "--check", action="store_true", help="only report problems"
+    )
 
-    parser = subparsers.add_parser('ls',
-            help='list snapshots')
+    parser = subparsers.add_parser("ls", help="list snapshots")
     parser.set_defaults(func=cmd_ls)
 
-    parser = subparsers.add_parser('mount',
-            help='mount one or more snapshots')
+    parser = subparsers.add_parser("mount", help="mount one or more snapshots")
     parser.set_defaults(func=cmd_mount)
-    parser.add_argument('snapshot', nargs='+',
-            help='snapshot name')
+    parser.add_argument("snapshot", nargs="+", help="snapshot name")
 
-    parser = subparsers.add_parser('umount',
-            help='unmount one or more snapshots')
+    parser = subparsers.add_parser("umount", help="unmount one or more snapshots")
     parser.set_defaults(func=cmd_umount)
-    parser.add_argument('-a', '--all', action='store_true',
-            help='unmount all mounted snapshots')
-    parser.add_argument('snapshot', nargs='*',
-            help='snapshot name')
+    parser.add_argument(
+        "-a", "--all", action="store_true", help="unmount all mounted snapshots"
+    )
+    parser.add_argument("snapshot", nargs="*", help="snapshot name")
+
 
 _setup()

@@ -27,7 +27,7 @@ version 2](COPYING).
 *   An LVM thin pool (see **lvmthin**(7)) to store the backup filesystem and
     associated snapshots.
 *   A backup filesystem with extended-attribute support (the `user_xattr`
-    mount option for ext4) and discard support (`discard` for ext4). 
+    mount option for ext4) and discard support (`discard` for ext4).
     Note than on RHEL 6, ext4 filesystems are limited to 16 TB.  Mounting
     `noatime` is recommended.
 
@@ -70,7 +70,7 @@ sources have additional requirements; see below.
     ```
 
 1.  Create a config file in `~/.config/deltaic.conf`.  See
-    [example-config.yaml](example-config.yaml) for the available settings. 
+    [example-config.yaml](example-config.yaml) for the available settings.
     Here is a minimal config file for the above configuration:
 
     ```yaml
@@ -102,7 +102,7 @@ Coda server via SSH and running `volutil dump` and `codadump2tar`.
 File/directory UIDs and mode bits are stored as rsync-compatible extended
 attributes.  ACLs are not stored.
 
-For performance, `coda` takes incremental volume dumps when possible. 
+For performance, `coda` takes incremental volume dumps when possible.
 However, incremental dumps do not record deleted files, so in each backup
 run, `coda` will perform full dumps on a random subset of volumes (1 in 7
 by default).
@@ -257,11 +257,11 @@ with GPG, and uploaded to a remote archive.
     GPG signing key and one or more additional GPG keys for encryption.  The
     signing key is used during archive creation and must not require a
     passphrase.  Any of the encryption keys can be used during restore to
-    decrypt the archives; they should be protected with a passphrase. 
+    decrypt the archives; they should be protected with a passphrase.
     Retain copies of all the keys offline in a safe place.
 
 1.  Configure archive settings in `deltaic.conf`.  See
-    [example-config.yaml](example-config.yaml) for the available settings. 
+    [example-config.yaml](example-config.yaml) for the available settings.
     Here is an example config fragment for storing encrypted archives to AWS:
 
     ```yaml
@@ -344,4 +344,3 @@ Developers Console and enable the Drive API.
 1. Run `deltaic googledrive auth ~/.cache/deltaic-googledrive-credentials.json`, and follow the prompts to obtain an authorization code. You can also use the 'googledrive-credentials-file' configuration option to choose a different name/location of the file.
 
 1. To test if the authentication tokens are working run `deltaic googledrive test`.
-

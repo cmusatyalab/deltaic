@@ -30,57 +30,58 @@ from ..util import XAttrs, make_dir_path, random_do_work
 from . import Source, Unit
 
 BLOCKSIZE = 256 << 10
-DIFF_MAGIC = 'rbd diff v1\n'
-PENDING_EXT = '.pending'
-ATTR_SNAPSHOT = 'user.rbd.snapshot'
-ATTR_PENDING_SNAPSHOT = 'user.rbd.pending-snapshot'
-ATTR_SNAPID = 'user.rbd.snapid'
+DIFF_MAGIC = "rbd diff v1\n"
+PENDING_EXT = ".pending"
+ATTR_SNAPSHOT = "user.rbd.snapshot"
+ATTR_PENDING_SNAPSHOT = "user.rbd.pending-snapshot"
+ATTR_SNAPID = "user.rbd.snapid"
+
 
 def rbd_exec(pool, cmd, *args):
-    cmdline = ['rbd', cmd] + list(args) + ['-p', pool]
-    print ' '.join(cmdline)
+    cmdline = ["rbd", cmd] + list(args) + ["-p", pool]
+    print " ".join(cmdline)
     subprocess.check_call(cmdline)
 
 
 def rbd_query(pool, *args):
-    cmd = ['rbd'] + list(args) + ['-p', pool, '--format=json']
+    cmd = ["rbd"] + list(args) + ["-p", pool, "--format=json"]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     out, _ = proc.communicate()
     if proc.returncode:
-        raise IOError('rbd query returned %d' % proc.returncode)
+        raise IOError("rbd query returned %d" % proc.returncode)
     return json.loads(out)
 
 
 def rbd_pool_info(pool):
-    return rbd_query(pool, 'ls', '-l')
+    return rbd_query(pool, "ls", "-l")
 
 
 def rbd_list_snapshots(pool, image):
-    return rbd_query(pool, 'snap', 'ls', '-l', image)
+    return rbd_query(pool, "snap", "ls", "-l", image)
 
 
 def get_image_for_snapshot(pool, snapshot):
     for cur in rbd_pool_info(pool):
-        if cur.get('snapshot') == snapshot:
-            return cur['image']
+        if cur.get("snapshot") == snapshot:
+            return cur["image"]
     raise KeyError("Couldn't locate snapshot %s" % snapshot)
 
 
 def get_snapid_for_snapshot(pool, image, snapshot):
     for cur in rbd_list_snapshots(pool, image):
-        if cur['name'] == snapshot:
-            return cur['id']
+        if cur["name"] == snapshot:
+            return cur["id"]
     raise KeyError("Couldn't locate snapshot %s" % snapshot)
 
 
 def create_snapshot(pool, image):
-    snapshot = 'backup-%s' % uuid.uuid1()
-    rbd_exec(pool, 'snap', 'create', '--image', image, '--snap', snapshot)
+    snapshot = "backup-%s" % uuid.uuid1()
+    rbd_exec(pool, "snap", "create", "--image", image, "--snap", snapshot)
     return snapshot
 
 
 def delete_snapshot(pool, image, snapshot):
-    rbd_exec(pool, 'snap', 'rm', '--image', image, '--snap', snapshot)
+    rbd_exec(pool, "snap", "rm", "--image", image, "--snap", snapshot)
 
 
 def try_unlink(path):
@@ -95,16 +96,16 @@ class LazyWriteFile(object):
         self._path = path
         if create and not os.path.exists(path):
             fd = os.open(path, os.O_RDWR | os.O_CREAT, 0666)
-            self._fh = os.fdopen(fd, 'r+b')
+            self._fh = os.fdopen(fd, "r+b")
         else:
-            self._fh = open(path, 'rb')
+            self._fh = open(path, "rb")
 
     def __reopen_rw__(self):
-        if self._fh.closed or '+' in self._fh.mode:
+        if self._fh.closed or "+" in self._fh.mode:
             return
-        print 're-opening', self._path, 'rw'
+        print "re-opening", self._path, "rw"
         offset = self._fh.tell()
-        self._fh = open(self._path, 'r+b')
+        self._fh = open(self._path, "r+b")
         self._fh.seek(offset)
 
     def __enter__(self):
@@ -172,11 +173,10 @@ class ScrubbingFile(LazyWriteFile):
         while start < len(buf):
             disk_buf = self._fh.read(min(BLOCKSIZE, len(buf) - start))
             count = len(disk_buf)
-            input_buf = buf[start:start + count]
+            input_buf = buf[start : start + count]
             if disk_buf != input_buf:
                 self._fh.seek(-count, 1)
-                print >>sys.stderr, "Fixing data mismatch at %d" % (
-                        self._fh.tell())
+                print >> sys.stderr, "Fixing data mismatch at %d" % (self._fh.tell())
                 super(LazyWriteFile, self).write(input_buf)
             start += count
 
@@ -192,11 +192,20 @@ class ScrubbingFile(LazyWriteFile):
 
 
 def export_diff(pool, image, snapshot, basis=None, fh=subprocess.PIPE):
-    cmd = ['rbd', 'export-diff', '--no-progress', '-p', pool, image,
-            '--snap', snapshot, '-']
+    cmd = [
+        "rbd",
+        "export-diff",
+        "--no-progress",
+        "-p",
+        pool,
+        image,
+        "--snap",
+        snapshot,
+        "-",
+    ]
     if basis is not None:
-        cmd.extend(['--from-snap', basis])
-    print ' '.join(cmd)
+        cmd.extend(["--from-snap", basis])
+    print " ".join(cmd)
     return subprocess.Popen(cmd, stdout=fh)
 
 
@@ -216,40 +225,40 @@ def unpack_diff(ifh, ofh, verbose=True):
     # Read header
     buf = ifh.read(len(DIFF_MAGIC))
     if buf != DIFF_MAGIC:
-        raise IOError('Missing diff magic string')
+        raise IOError("Missing diff magic string")
     # Read each record
     while True:
-        type = read_items(ifh, 'c')
-        if type in ('f', 't'):
+        type = read_items(ifh, "c")
+        if type in ("f", "t"):
             # Source/dest snapshot name => ignore
-            size = read_items(ifh, '<I')
+            size = read_items(ifh, "<I")
             ifh.read(size)
-        elif type == 's':
+        elif type == "s":
             # Image size
-            total_size = read_items(ifh, '<Q')
+            total_size = read_items(ifh, "<Q")
             ofh.truncate(total_size)
-        elif type == 'w':
+        elif type == "w":
             # Data
-            offset, length = read_items(ifh, '<QQ')
+            offset, length = read_items(ifh, "<QQ")
             total_changed += length
             ofh.seek(offset)
             while length > 0:
                 buf = ifh.read(min(length, BLOCKSIZE))
                 ofh.write(buf)
                 length -= len(buf)
-        elif type == 'z':
+        elif type == "z":
             # Zero data
-            offset, length = read_items(ifh, '<QQ')
+            offset, length = read_items(ifh, "<QQ")
             total_changed += length
             punch(ofh, offset, length)
-        elif type == 'e':
-            if ifh.read(1) != '':
+        elif type == "e":
+            if ifh.read(1) != "":
                 raise IOError("Expected EOF, didn't find it")
             break
         else:
-            raise ValueError('Unknown record type: %s' % type)
+            raise ValueError("Unknown record type: %s" % type)
     if verbose:
-        print '%d bytes written, %d total' % (total_changed, total_size)
+        print "%d bytes written, %d total" % (total_changed, total_size)
 
 
 def fetch_snapshot(pool, image, snapshot, path):
@@ -260,7 +269,7 @@ def fetch_snapshot(pool, image, snapshot, path):
         with LazyWriteFile(path, create=True) as ofh:
             unpack_diff(proc.stdout, ofh)
         if proc.wait():
-            raise IOError('Export returned %d' % proc.returncode)
+            raise IOError("Export returned %d" % proc.returncode)
         XAttrs(path).update(ATTR_SNAPSHOT, snapshot)
     except Exception:
         os.unlink(path)
@@ -272,7 +281,7 @@ def scrub_snapshot(pool, image, snapshot, path):
     with ScrubbingFile(path) as ofh:
         unpack_diff(proc.stdout, ofh, verbose=False)
     if proc.wait():
-        raise IOError('Export returned %d' % proc.returncode)
+        raise IOError("Export returned %d" % proc.returncode)
 
 
 def fetch_image(pool, image, path):
@@ -289,17 +298,16 @@ def make_patch(pool, image, path):
     old_snapshot = attrs[ATTR_SNAPSHOT]
     pending_path = path + PENDING_EXT
     if ATTR_PENDING_SNAPSHOT in attrs:
-        raise IOError('Pending snapshot already exists')
+        raise IOError("Pending snapshot already exists")
     # Delete any leftover file from partial previous run
     try_unlink(pending_path)
 
     new_snapshot = create_snapshot(pool, image)
     try:
-        with open(pending_path, 'wb') as fh:
-            proc = export_diff(pool, image, new_snapshot, basis=old_snapshot,
-                    fh=fh)
+        with open(pending_path, "wb") as fh:
+            proc = export_diff(pool, image, new_snapshot, basis=old_snapshot, fh=fh)
         if proc.wait():
-            raise IOError('Export returned %d' % proc.returncode)
+            raise IOError("Export returned %d" % proc.returncode)
         attrs.update(ATTR_PENDING_SNAPSHOT, new_snapshot)
     except Exception:
         try_unlink(pending_path)
@@ -316,7 +324,7 @@ def apply_patch_and_rebase(pool, image, path):
         # Nothing to do
         try_unlink(pending_path)
         return
-    with open(pending_path, 'rb') as ifh:
+    with open(pending_path, "rb") as ifh:
         with LazyWriteFile(path, create=True) as ofh:
             unpack_diff(ifh, ofh)
     delete_snapshot(pool, image, old_snapshot)
@@ -375,8 +383,8 @@ def restore_image(path, pool, image):
         # copy the backup somewhere else first (probably while preserving
         # sparseness), since we may be restoring from a read-only LVM
         # snapshot.
-        raise ValueError('Backup image has partially-applied diff')
-    rbd_exec(pool, 'import', path, image)
+        raise ValueError("Backup image has partially-applied diff")
+    rbd_exec(pool, "import", path, image)
 
 
 def drop_image_snapshots(pool, path):
@@ -396,16 +404,20 @@ def drop_image_snapshots(pool, path):
 
 
 def get_relroot(pool, friendly_name, snapshot=False):
-    return os.path.join('rbd', pool, 'snapshots' if snapshot else 'images',
-            friendly_name)
+    return os.path.join(
+        "rbd", pool, "snapshots" if snapshot else "images", friendly_name
+    )
 
 
 def cmd_rbd_backup(config, args):
-    settings = config['settings']
-    object_name = config['rbd'][args.pool]['snapshots' if args.snapshot
-            else 'images'][args.friendly_name]
-    out_path = os.path.join(settings['root'],
-            get_relroot(args.pool, args.friendly_name, snapshot=args.snapshot))
+    settings = config["settings"]
+    object_name = config["rbd"][args.pool]["snapshots" if args.snapshot else "images"][
+        args.friendly_name
+    ]
+    out_path = os.path.join(
+        settings["root"],
+        get_relroot(args.pool, args.friendly_name, snapshot=args.snapshot),
+    )
     basedir = make_dir_path(os.path.dirname(out_path))
     if args.snapshot:
         backup_snapshot(args.pool, object_name, out_path)
@@ -424,45 +436,42 @@ def cmd_rbd_restore(config, args):
 
 
 def cmd_rbd_drop(config, args):
-    settings = config['settings']
-    out_path = os.path.join(settings['root'],
-            get_relroot(args.pool, args.friendly_name))
+    settings = config["settings"]
+    out_path = os.path.join(
+        settings["root"], get_relroot(args.pool, args.friendly_name)
+    )
     drop_image_snapshots(args.pool, out_path)
 
 
 def _setup():
-    group = make_subcommand_group('rbd',
-            help='low-level RBD image/snapshot support')
+    group = make_subcommand_group("rbd", help="low-level RBD image/snapshot support")
 
-    parser = group.add_parser('backup',
-            help='back up RBD image or snapshot')
+    parser = group.add_parser("backup", help="back up RBD image or snapshot")
     parser.set_defaults(func=cmd_rbd_backup)
-    parser.add_argument('pool',
-            help='pool name')
-    parser.add_argument('friendly_name', metavar='config-name',
-            help='config name for image or snapshot')
-    parser.add_argument('-c', '--scrub', action='store_true',
-            help='check backup data against original')
-    parser.add_argument('-s', '--snapshot', action='store_true',
-            help='requested object is a snapshot')
+    parser.add_argument("pool", help="pool name")
+    parser.add_argument(
+        "friendly_name", metavar="config-name", help="config name for image or snapshot"
+    )
+    parser.add_argument(
+        "-c", "--scrub", action="store_true", help="check backup data against original"
+    )
+    parser.add_argument(
+        "-s", "--snapshot", action="store_true", help="requested object is a snapshot"
+    )
 
-    parser = group.add_parser('restore',
-            help='restore backup to a new RBD image')
+    parser = group.add_parser("restore", help="restore backup to a new RBD image")
     parser.set_defaults(func=cmd_rbd_restore)
-    parser.add_argument('path',
-            help='path to image or snapshot file')
-    parser.add_argument('pool',
-            help='destination pool name')
-    parser.add_argument('image',
-            help='destination image name')
+    parser.add_argument("path", help="path to image or snapshot file")
+    parser.add_argument("pool", help="destination pool name")
+    parser.add_argument("image", help="destination image name")
 
-    parser = group.add_parser('drop',
-            help='remove RBD snapshots for image backup')
+    parser = group.add_parser("drop", help="remove RBD snapshots for image backup")
     parser.set_defaults(func=cmd_rbd_drop)
-    parser.add_argument('pool',
-            help='pool name')
-    parser.add_argument('friendly_name', metavar='config-name',
-            help='config name for image')
+    parser.add_argument("pool", help="pool name")
+    parser.add_argument(
+        "friendly_name", metavar="config-name", help="config name for image"
+    )
+
 
 _setup()
 
@@ -471,26 +480,26 @@ class ImageUnit(Unit):
     def __init__(self, settings, pool, friendly_name):
         Unit.__init__(self)
         self.root = get_relroot(pool, friendly_name)
-        self.backup_args = ['rbd', 'backup', pool, friendly_name]
-        if random_do_work(settings, 'rbd-scrub-probability', 0.0166):
-            self.backup_args.append('-c')
+        self.backup_args = ["rbd", "backup", pool, friendly_name]
+        if random_do_work(settings, "rbd-scrub-probability", 0.0166):
+            self.backup_args.append("-c")
 
 
 class SnapshotUnit(ImageUnit):
     def __init__(self, settings, pool, friendly_name):
         ImageUnit.__init__(self, settings, pool, friendly_name)
         self.root = get_relroot(pool, friendly_name, snapshot=True)
-        self.backup_args.append('-s')
+        self.backup_args.append("-s")
 
 
 class RBDSource(Source):
-    LABEL = 'rbd'
+    LABEL = "rbd"
 
     def get_units(self):
         ret = []
         for pool, info in sorted(self._manifest.items()):
-            for friendly_name in sorted(info.get('images', {})):
+            for friendly_name in sorted(info.get("images", {})):
                 ret.append(ImageUnit(self._settings, pool, friendly_name))
-            for friendly_name in sorted(info.get('snapshots', {})):
+            for friendly_name in sorted(info.get("snapshots", {})):
                 ret.append(SnapshotUnit(self._settings, pool, friendly_name))
         return ret

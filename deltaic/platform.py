@@ -17,16 +17,16 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from ctypes import *
 import os
+from ctypes import *
 
-_libc = CDLL('libc.so.6', use_errno=True)
+_libc = CDLL("libc.so.6", use_errno=True)
 
 
 class Timeval(Structure):
     _fields_ = [
-        ('tv_sec', c_long),
-        ('tv_usec', c_long),
+        ("tv_sec", c_long),
+        ("tv_usec", c_long),
     ]
 
 
@@ -39,7 +39,7 @@ _lutimes.restype = c_int
 def lutime(path, time):
     time = Timeval(int(time), int((time - int(time)) * 1e6))
     if _lutimes(path, TwoTimevals(time, time)):
-        raise OSError('lutimes() failed: %s' % os.strerror(get_errno()))
+        raise OSError("lutimes() failed: %s" % os.strerror(get_errno()))
 
 
 _fallocate = _libc.fallocate64
@@ -50,8 +50,9 @@ _FALLOC_FL_PUNCH_HOLE = 2
 
 
 def punch(fh, offset, length):
-    if hasattr(fh, 'punch'):
+    if hasattr(fh, "punch"):
         fh.punch(offset, length)
-    elif _fallocate(fh.fileno(), _FALLOC_FL_PUNCH_HOLE | _FALLOC_FL_KEEP_SIZE,
-            offset, length):
-        raise OSError('fallocate() failed: %s' % os.strerror(get_errno()))
+    elif _fallocate(
+        fh.fileno(), _FALLOC_FL_PUNCH_HOLE | _FALLOC_FL_KEEP_SIZE, offset, length
+    ):
+        raise OSError("fallocate() failed: %s" % os.strerror(get_errno()))

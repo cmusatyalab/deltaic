@@ -20,40 +20,40 @@
 from setuptools import setup
 
 setup(
-    name='deltaic',
+    name="deltaic",
     packages=[
-        'deltaic',
-        'deltaic.sources',
+        "deltaic",
+        "deltaic.sources",
     ],
     scripts=[
-        'bin/deltaic',
-        'bin/dt-askpass',
+        "bin/deltaic",
+        "bin/dt-askpass",
     ],
-    description='Efficient backup system supporting multiple data sources',
-    license='GNU General Public License, version 2',
+    description="Efficient backup system supporting multiple data sources",
+    license="GNU General Public License, version 2",
     install_requires=[
-        'argparse',
-        'boto >= 2.23.0',
-        'github3.py < 1.0.0', # >= 0.9.0
-        'google-api-python-client',
-        'oauth2client',
-        'pybloom', # >= 2.0
-        'python-dateutil',
-        'PyYAML',
-        'xattr',
+        "argparse",
+        "boto >= 2.23.0",
+        "github3.py < 1.0.0",  # >= 0.9.0
+        "google-api-python-client",
+        "oauth2client",
+        "pybloom",  # >= 2.0
+        "python-dateutil",
+        "PyYAML",
+        "xattr",
     ],
     dependency_links=[
-        'git+https://github.com/jaybaird/python-bloomfilter@v2.0#egg=pybloom',
+        "git+https://github.com/jaybaird/python-bloomfilter@v2.0#egg=pybloom",
     ],
     classifiers=[
-        'Development Status :: 4 - Beta',
-        'Environment :: No Input/Output (Daemon)',
-        'Intended Audience :: System Administrators',
-        'License :: OSI Approved :: GNU General Public License v2 (GPLv2)',
-        'Operating System :: POSIX :: Linux',
-        'Programming Language :: Python :: 2.6',
-        'Programming Language :: Python :: 2.7',
-        'Topic :: System :: Archiving :: Backup',
+        "Development Status :: 4 - Beta",
+        "Environment :: No Input/Output (Daemon)",
+        "Intended Audience :: System Administrators",
+        "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+        "Operating System :: POSIX :: Linux",
+        "Programming Language :: Python :: 2.6",
+        "Programming Language :: Python :: 2.7",
+        "Topic :: System :: Archiving :: Backup",
     ],
     zip_safe=True,
 )
