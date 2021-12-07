@@ -1,0 +1,3 @@
+# derives from pyproject.toml, using the same license
+SPDX-FileCopyrightText: 2021 Carnegie Mellon University
+SPDX-License-Identifier: GPL-2.0-only

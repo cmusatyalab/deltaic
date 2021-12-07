@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2014-2021 Carnegie Mellon University
+# SPDX-License-Identifier: 0BSD
+
 settings:
   ## Base configuration
   # The root of the backup directory tree

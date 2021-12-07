@@ -16,8 +16,11 @@ These data sources are currently supported:
 *   RADOS Block Device images and snapshots
 *   Coda volumes
 
-Deltaic is released under the [GNU General Public License,
-version 2](COPYING).
+Deltaic is released under the [GNU General Public License, version 2](LICENSES/GPL-2.0-only.txt).
+
+Some of the packaging / linting related configuration files that are directly
+derived from example configurations retain their original MIT and zero clause
+BSD licenses.
 
 
 ## Requirements
@@ -321,7 +324,7 @@ of a month.  You can specify a retrieval rate with the `-r` option to
 To use Google Drive you first need to create or select a project in the Google
 Developers Console and enable the Drive API.
 
-1. Go to the [Google Developers Console][https://console.developers.google.com].
+1. Go to the [Google Developers Console](https://console.developers.google.com).
 
 1. Select existing or create a new project.
 

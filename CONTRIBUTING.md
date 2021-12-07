@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2014-2021 Carnegie Mellon University
+SPDX-License-Identifier: GPL-2.0-only
+-->
+
 # Designing and implementing a backup source
 
 The existing backup sources have been designed with several principles in

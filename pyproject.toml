@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2021 Carnegie Mellon University
+# SPDX-License-Identifier: GPL-2.0-only
+
 [tool.poetry]
 name = "deltaic"
 version = "0.1.0"
@@ -20,6 +23,7 @@ classifiers = [
 include = [
     { path = "CONTRIBUTING.md", format = "sdist" },
     { path = "COPYING", format = "sdist" },
+    { path = "LICENSES/*", format = "sdist" },
     { path = "example-config.yaml", format = "sdist" },
 ]
 
