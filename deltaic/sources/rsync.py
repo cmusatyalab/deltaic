@@ -17,13 +17,14 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-import argparse
 import os
 import re
 import subprocess
 import sys
 
-from ..command import make_subcommand_group
+import click
+
+from ..command import pass_config
 from ..util import make_dir_path, random_do_work
 from . import Source, Unit
 
@@ -145,82 +146,72 @@ def get_relroot(hostname, info):
     return os.path.join("rsync", alias)
 
 
-def cmd_rsync_backup(config, args):
+@click.group()
+def rsync():
+    """low-level rsync support for host filesystems"""
+
+
+@rsync.command()
+@click.option("-c", "--scrub", is_flag=True, help="check backup data against original")
+@click.argument("host")
+@pass_config
+def backup(config, scrub, host):
+    """back up host filesystem"""
     settings = config["settings"]
-    info = config["rsync"][args.host]
-    root_dir = os.path.join(settings["root"], get_relroot(args.host, info))
+    info = config["rsync"][host]
+    root_dir = os.path.join(settings["root"], get_relroot(host, info))
     exclude = settings.get("rsync-exclude", [])
     exclude.extend(info.get("exclude", []))
     rsync = settings.get("rsync-local-binary")
     user = info.get("user", "root")
 
     if "pre" in info:
-        remote_command(args.host, info["pre"], user=user)
+        remote_command(host, info["pre"], user=user)
     backup_host(
-        args.host,
+        host,
         root_dir,
         info["mounts"],
         exclude,
-        scrub=args.scrub,
+        scrub=scrub,
         rsync=rsync,
         user=user,
     )
     if "post" in info:
-        remote_command(args.host, info["post"], user=user)
+        remote_command(host, info["post"], user=user)
 
 
-def cmd_rsync_restore(config, args):
+@rsync.command()
+@click.option(
+    "--coda", is_flag=True, help="use options suitable for restoring a Coda volume"
+)
+@click.option(
+    "-u",
+    "--user",
+    default="root",
+    show_default=True,
+    help="username on destination host",
+)
+@click.argument("source")
+@click.argument("host")
+@click.argument("destdir")
+@click.argument("args", nargs=-1)
+@pass_config
+def restore(config, coda, user, source, host, destdir, args):
+    """restore file or directory tree to host filesystem
+
+    ARGS specifies additional arguments for rsync.
+    """
     settings = config["settings"]
     rsync = settings.get("rsync-local-binary")
     restore_host(
-        args.source,
-        args.host,
-        args.destdir,
-        coda=args.coda,
-        user=args.user,
-        extra_args=args.args,
+        source,
+        host,
+        destdir,
+        coda=coda,
+        user=user,
+        extra_args=args,
         rsync=rsync,
     )
-
-
-def _setup():
-    group = make_subcommand_group(
-        "rsync", help="low-level rsync support for host filesystems"
-    )
-
-    parser = group.add_parser("backup", help="back up host filesystem")
-    parser.set_defaults(func=cmd_rsync_backup)
-    parser.add_argument("host", help="host to back up")
-    parser.add_argument(
-        "-c", "--scrub", action="store_true", help="check backup data against original"
-    )
-
-    parser = group.add_parser(
-        "restore", help="restore file or directory tree to host filesystem"
-    )
-    parser.set_defaults(func=cmd_rsync_restore)
-    parser.add_argument(
-        "source", metavar="source-path", help="file or directory to restore"
-    )
-    parser.add_argument("host", help="destination host")
-    parser.add_argument("destdir", metavar="dest-dir", help="destination directory")
-    parser.add_argument(
-        "--coda",
-        action="store_true",
-        help="use options suitable for restoring a Coda volume",
-    )
-    parser.add_argument(
-        "-u", "--user", help="username on destination host [default: root]"
-    )
-    parser.add_argument(
-        "args",
-        metavar="...",
-        nargs=argparse.REMAINDER,
-        help="additional arguments for rsync",
-    )
-
-
-_setup()
 
 
 class RsyncUnit(Unit):

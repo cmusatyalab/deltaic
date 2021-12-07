@@ -26,7 +26,9 @@ import sys
 import tarfile
 from pathlib import Path
 
-from ..command import make_subcommand_group
+import click
+
+from ..command import pass_config
 from ..platform import lutime
 from ..util import (
     BloomSet,
@@ -312,50 +314,41 @@ def get_relroot(hostname, volume):
     return os.path.join("coda", hostname.split(".")[0], volume)
 
 
-def cmd_coda_backup(config, args):
+@click.group()
+def coda():
+    """low-level Coda support"""
+
+
+@coda.command()
+@click.option("-i", "--incremental", is_flag=True, help="request incremental backup")
+@click.option(
+    " /-R",
+    "--refresh/--skip-refresh",
+    default=True,
+    show_default=True,
+    help="refresh backup volume",
+)
+@click.option("-v", "--verbose", is_flag=True, help="show volutil output")
+@click.argument("host")
+@click.argument("volume")
+@pass_config
+def backup(config, incremental, refresh, verbose, host, volume):
+    """back up Coda volume"""
     settings = config["settings"]
-    root_dir = os.path.join(settings["root"], get_relroot(args.host, args.volume))
+    root_dir = os.path.join(settings["root"], get_relroot(host, volume))
     volutil = settings.get("coda-volutil-path", "volutil")
     codadump2tar = settings.get("coda-codadump2tar-path", "codadump2tar")
-    if args.refresh:
-        refresh_backup_volume(
-            args.host, args.volume, verbose=args.verbose, volutil=volutil
-        )
+    if refresh:
+        refresh_backup_volume(host, volume, verbose=verbose, volutil=volutil)
     sync_backup_volume(
-        args.host,
-        args.volume,
+        host,
+        volume,
         root_dir,
-        incremental=args.incremental,
-        verbose=args.verbose,
+        incremental=incremental,
+        verbose=verbose,
         volutil=volutil,
         codadump2tar=codadump2tar,
     )
-
-
-def _setup():
-    group = make_subcommand_group("coda", help="low-level Coda support")
-
-    parser = group.add_parser("backup", help="back up Coda volume")
-    parser.set_defaults(func=cmd_coda_backup)
-    parser.add_argument("host", help="Coda server hostname")
-    parser.add_argument("volume", help="Coda volume name")
-    parser.add_argument(
-        "-i", "--incremental", action="store_true", help="request incremental backup"
-    )
-    parser.add_argument(
-        "-R",
-        "--skip-refresh",
-        dest="refresh",
-        default=True,
-        action="store_false",
-        help="skip refreshing backup volume",
-    )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="show volutil output"
-    )
-
-
-_setup()
 
 
 class CodaUnit(Unit):

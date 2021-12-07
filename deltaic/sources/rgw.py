@@ -27,10 +27,11 @@ import xml.etree.ElementTree as ET
 from multiprocessing import Pool
 
 import boto
+import click
 import dateutil.parser
 from boto.s3.connection import OrdinaryCallingFormat
 
-from ..command import make_subcommand_group
+from ..command import pass_config
 from ..util import (
     BloomSet,
     UpdateFile,
@@ -411,75 +412,61 @@ def get_relroot(bucket):
     return os.path.join("rgw", bucket)
 
 
-def cmd_rgw_backup(config, args):
+@click.group()
+def rgw():
+    """low-level radosgw support"""
+
+
+@rgw.command()
+@click.option(
+    "-A", "--scrub-acls", is_flag=True, help="update ACLs for unmodified keys"
+)
+@click.option("-c", "--scrub", is_flag=True, help="check backup data against original")
+@click.argument("bucket")
+@pass_config
+def backup(config, scrub_acls, scrub, bucket):
     settings = config["settings"]
-    root_dir = os.path.join(settings["root"], get_relroot(args.bucket))
+    root_dir = os.path.join(settings["root"], get_relroot(bucket))
     server = settings["rgw-server"]
     secure = settings.get("rgw-secure", False)
     workers = settings.get("rgw-threads", 4)
-    if args.scrub:
+    if scrub:
         scrub = SCRUB_ALL
-    elif args.scrub_acls:
+    elif scrub_acls:
         scrub = SCRUB_ACLS
     else:
         scrub = SCRUB_NONE
     if not sync_bucket(
-        server, args.bucket, root_dir, workers=workers, scrub=scrub, secure=secure
+        server, bucket, root_dir, workers=workers, scrub=scrub, secure=secure
     ):
-        return 1
+        sys.exit(1)
 
 
-def cmd_rgw_restore(config, args):
+@rgw.command()
+@click.option("-f", "--force", is_flag=True, help="force restore to non-empty bucket")
+@click.argument("source")
+@click.argument("dest_bucket")
+@pass_config
+def restore(config, force, source, dest_bucket):
+    """restore radosgw bucket
+    SOURCE is the origin bucket name or filesystem path
+    """
     settings = config["settings"]
-    if "/" in args.source:
-        root_dir = os.path.abspath(args.source)
+    if "/" in source:
+        root_dir = os.path.abspath(source)
     else:
-        root_dir = os.path.join(settings["root"], get_relroot(args.source))
+        root_dir = os.path.join(settings["root"], get_relroot(source))
     server = settings["rgw-server"]
     secure = settings.get("rgw-secure", False)
     workers = settings.get("rgw-threads", 4)
     restore_bucket(
         root_dir,
         server,
-        args.dest_bucket,
-        force=args.force,
+        dest_bucket,
+        force=force,
         workers=workers,
         secure=secure,
     )
-
-
-def _setup():
-    group = make_subcommand_group("rgw", help="low-level radosgw support")
-
-    parser = group.add_parser("backup", help="back up radosgw bucket")
-    parser.set_defaults(func=cmd_rgw_backup)
-    parser.add_argument("bucket", help="bucket name")
-    parser.add_argument(
-        "-A",
-        "--scrub-acls",
-        action="store_true",
-        help="update ACLs for unmodified keys",
-    )
-    parser.add_argument(
-        "-c", "--scrub", action="store_true", help="check backup data against original"
-    )
-
-    parser = group.add_parser("restore", help="restore radosgw bucket")
-    parser.set_defaults(func=cmd_rgw_restore)
-    parser.add_argument(
-        "source",
-        metavar="origin-bucket-or-path",
-        help="origin bucket name or filesystem path",
-    )
-    parser.add_argument(
-        "dest_bucket", metavar="dest-bucket", help="destination bucket for restore"
-    )
-    parser.add_argument(
-        "-f", "--force", action="store_true", help="force restore to non-empty bucket"
-    )
-
-
-_setup()
 
 
 class BucketUnit(Unit):

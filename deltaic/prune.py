@@ -20,7 +20,9 @@
 import os
 from datetime import date, timedelta
 
-from .command import subparsers
+import click
+
+from .command import pass_config
 from .storage import PhysicalSnapshot
 
 
@@ -89,37 +91,28 @@ def prune_logs(root_dir, distinct_days):
                 os.unlink(os.path.join(dirpath, filename))
 
 
-def cmd_prune(config, args):
+@click.command()
+@click.option(
+    "-n",
+    "--dry-run",
+    is_flag=True,
+    help="just print the snapshots that would be removed",
+)
+@click.option("-v", "--verbose", is_flag=True, help="report snapshots removed")
+@pass_config
+def prune(config, dry_run, verbose):
+    """delete old LVM snapshots and backup logs"""
     settings = config["settings"]
 
     snapshots = PhysicalSnapshot.list()
     remove = select_snapshots_to_remove(settings, snapshots)
     for cur in sorted(remove):
-        if args.dry_run:
+        if dry_run:
             print(cur)
         else:
-            cur.remove(verbose=args.verbose)
+            cur.remove(verbose=verbose)
 
-    if not args.dry_run:
+    if not dry_run:
         log_dir = os.path.join(settings["root"], "Logs")
         distinct_days = settings.get("gc-log-distinct-days", 60)
         prune_logs(log_dir, distinct_days)
-
-
-def _setup():
-    parser = subparsers.add_parser(
-        "prune", help="delete old LVM snapshots and backup logs"
-    )
-    parser.set_defaults(func=cmd_prune)
-    parser.add_argument(
-        "-n",
-        "--dry-run",
-        action="store_true",
-        help="just print the snapshots that would be removed",
-    )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="report snapshots removed"
-    )
-
-
-_setup()

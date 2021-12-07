@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014 Carnegie Mellon University
+# Copyright (c) 2014-2021 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -17,52 +17,33 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-import argparse
-import os
+import shutil
 import sys
+from pathlib import Path
+
+import click
 
 
 def _get_default_config_path():
-    config_dir = os.environ.get("XDG_CONFIG_HOME")
-    if config_dir is None:
-        config_dir = os.path.join(os.environ["HOME"], ".config")
-    return os.path.join(config_dir, "deltaic.conf")
+    return Path(click.get_app_dir("deltaic")).with_suffix(".conf")
 
 
-_default_config_path = _get_default_config_path()
+default_config_path = _get_default_config_path()
 
 
-def make_subcommand_group(name, help):
-    subparser = subparsers.add_parser(name, help=help)
-    group = subparser.add_subparsers(metavar="COMMAND")
-    group.parser = subparser
-    return group
+pass_config = click.make_pass_decorator(dict)
 
 
 def get_cmdline_for_subcommand(subcommand):
-    cmd = [sys.executable, "-u", sys.argv[0]]
+    cmd = [shutil.which(sys.argv[0])]
+
     # Append global command-line arguments that must be passed to all
-    # sub-invocations.  Reparse the command line so the entire call chain
-    # doesn't have to pass the Namespace around.
-    args = parser.parse_args()
-    if args.config_file != parser.get_default("config_file"):
-        cmd.extend(["-c", args.config_file])
+    # sub-invocations.
+    ctx = click.get_current_context()
+    root_ctx = ctx.find_root()
+    config_file = root_ctx.params["config_file"]
+    if not config_file.samefile(default_config_path):
+        cmd.extend(["-c", str(config_file)])
+
     cmd.extend(subcommand)
     return cmd
-
-
-def sort_subparsers():
-    # Ensure top-level help is in a reasonable order
-    subparsers._get_subactions().sort(key=lambda k: k.dest)
-
-
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "-c",
-    "--config-file",
-    metavar="PATH",
-    default=_default_config_path,
-    help="path to config file (default: %s)" % _default_config_path,
-)
-
-subparsers = parser.add_subparsers(metavar="COMMAND")

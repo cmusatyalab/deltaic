@@ -25,7 +25,9 @@ import subprocess
 import sys
 import uuid
 
-from ..command import make_subcommand_group
+import click
+
+from ..command import pass_config
 from ..platform import punch
 from ..util import XAttrs, make_dir_path, random_do_work
 from . import Source, Unit
@@ -406,71 +408,66 @@ def get_relroot(pool, friendly_name, snapshot=False):
     )
 
 
-def cmd_rbd_backup(config, args):
+@click.group()
+def rbd():
+    """low-level RBD image/snapshot support"""
+
+
+@rbd.command()
+@click.option("-c", "--scrub", is_flag=True, help="check backup data against original")
+@click.option("-s", "--snapshot", is_flag=True, help="requested object is a snapshot")
+@click.argument("pool")
+@click.argument("friendly_name")
+@pass_config
+def backup(config, scrub, snapshot, pool, friendly_name):
+    """back up RBD image or snapshot
+
+    Back up image or snapshot from POOL. FRIENDLY_NAME is the name used in the
+    config for the image or snapshot.
+    """
     settings = config["settings"]
-    object_name = config["rbd"][args.pool]["snapshots" if args.snapshot else "images"][
-        args.friendly_name
+    object_name = config["rbd"][pool]["snapshots" if snapshot else "images"][
+        friendly_name
     ]
     out_path = os.path.join(
         settings["root"],
-        get_relroot(args.pool, args.friendly_name, snapshot=args.snapshot),
+        get_relroot(pool, friendly_name, snapshot=snapshot),
     )
     make_dir_path(os.path.dirname(out_path))
-    if args.snapshot:
-        backup_snapshot(args.pool, object_name, out_path)
-        if args.scrub:
-            image = get_image_for_snapshot(args.pool, object_name)
-            scrub_snapshot(args.pool, image, object_name, out_path)
+    if snapshot:
+        backup_snapshot(pool, object_name, out_path)
+        if scrub:
+            image = get_image_for_snapshot(pool, object_name)
+            scrub_snapshot(pool, image, object_name, out_path)
     else:
-        backup_image(args.pool, object_name, out_path)
-        if args.scrub:
+        backup_image(pool, object_name, out_path)
+        if scrub:
             snapshot = XAttrs(out_path)[ATTR_SNAPSHOT]
-            scrub_snapshot(args.pool, object_name, snapshot, out_path)
+            scrub_snapshot(pool, object_name, snapshot, out_path)
 
 
-def cmd_rbd_restore(config, args):
-    restore_image(args.path, args.pool, args.image)
+@rbd.command()
+@click.argument("path")
+@click.argument("pool")
+@click.argument("image")
+def restore(path, pool, image):
+    """restore backup to a new RBD image
+
+    Arguments are PATH to image or snapshot file and the destination POOL and
+    IMAGE names.
+    """
+    restore_image(path, pool, image)
 
 
-def cmd_rbd_drop(config, args):
+@rbd.command()
+@click.argument("pool")
+@click.argument("friendly_name")
+@pass_config
+def drop(config, pool, friendly_name):
+    """remove RBD snapshots for image backup"""
     settings = config["settings"]
-    out_path = os.path.join(
-        settings["root"], get_relroot(args.pool, args.friendly_name)
-    )
-    drop_image_snapshots(args.pool, out_path)
-
-
-def _setup():
-    group = make_subcommand_group("rbd", help="low-level RBD image/snapshot support")
-
-    parser = group.add_parser("backup", help="back up RBD image or snapshot")
-    parser.set_defaults(func=cmd_rbd_backup)
-    parser.add_argument("pool", help="pool name")
-    parser.add_argument(
-        "friendly_name", metavar="config-name", help="config name for image or snapshot"
-    )
-    parser.add_argument(
-        "-c", "--scrub", action="store_true", help="check backup data against original"
-    )
-    parser.add_argument(
-        "-s", "--snapshot", action="store_true", help="requested object is a snapshot"
-    )
-
-    parser = group.add_parser("restore", help="restore backup to a new RBD image")
-    parser.set_defaults(func=cmd_rbd_restore)
-    parser.add_argument("path", help="path to image or snapshot file")
-    parser.add_argument("pool", help="destination pool name")
-    parser.add_argument("image", help="destination image name")
-
-    parser = group.add_parser("drop", help="remove RBD snapshots for image backup")
-    parser.set_defaults(func=cmd_rbd_drop)
-    parser.add_argument("pool", help="pool name")
-    parser.add_argument(
-        "friendly_name", metavar="config-name", help="config name for image"
-    )
-
-
-_setup()
+    out_path = os.path.join(settings["root"], get_relroot(pool, friendly_name))
+    drop_image_snapshots(pool, out_path)
 
 
 class ImageUnit(Unit):

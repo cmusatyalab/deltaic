@@ -25,15 +25,13 @@ setup(
         "deltaic",
         "deltaic.sources",
     ],
-    scripts=[
-        "bin/deltaic",
-        "bin/dt-askpass",
-    ],
     description="Efficient backup system supporting multiple data sources",
     license="GNU General Public License, version 2",
     install_requires=[
         "argparse",
         "boto >= 2.23.0",
+        "click",
+        "click-plugins",
         "github3.py < 1.0.0",  # >= 0.9.0
         "google-api-python-client",
         "oauth2client",
@@ -42,6 +40,31 @@ setup(
         "PyYAML",
         "xattr",
     ],
+    entry_points={
+        "console_scripts": [
+            "deltaic = deltaic.command:deltaic_cli",
+            "dt-askpass = deltaic.command:askpass",
+        ],
+        "deltaic.lowlevel": [
+            "coda = deltaic.sources.coda:coda",
+            "github = deltaic.sources.github:github",
+            "googledrive = deltaic.archivers.googledrive:googledrive",
+            "rbd = deltaic.sources.rbd:rbd",
+            "rgw = deltaic.sources.rgw:rgw",
+            "rsync = deltaic.sources.rsync:rsync",
+        ],
+        "deltaic.sources": [
+            "coda = deltaic.sources.coda:CodaSource",
+            "github = deltaic.sources.github:GitHubSource",
+            "rbd = deltaic.sources.rbd:RBDSource",
+            "rgw = deltaic.sources.rgw:RGWSource",
+            "rsync = deltaic.sources.rsync:RsyncSource",
+        ],
+        "deltaic.archivers": [
+            "aws = deltaic.archivers.aws:AWSArchiver",
+            "googledrive = deltaic.archivers.googledrive:DriveArchiver",
+        ],
+    },
     classifiers=[
         "Development Status :: 4 - Beta",
         "Environment :: No Input/Output (Daemon)",

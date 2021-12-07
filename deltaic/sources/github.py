@@ -26,10 +26,11 @@ import sys
 import time
 from getpass import getpass
 
+import click
 import github3
 import yaml
 
-from ..command import get_cmdline_for_subcommand, make_subcommand_group
+from ..command import pass_config
 from ..util import (
     BloomSet,
     UpdateFile,
@@ -184,7 +185,7 @@ def update_issues(repo, root_dir, scrub=False):
                 }
                 for event in issue.iter_events()
             ],
-            "labels": [l.name for l in issue.labels],
+            "labels": [label.name for label in issue.labels],
             "milestone": issue.milestone.number if issue.milestone else None,
             "number": issue.number,
             "state": issue.state,
@@ -369,7 +370,15 @@ def github_login(*args, **kwargs):
     return gh
 
 
-def cmd_github_auth(config, args):
+@click.group()
+def github():
+    """low-level GitHub support"""
+
+
+@github.command()
+@pass_config
+def auth(config, args):
+    """obtain OAuth token for config file"""
     settings = config["settings"]
 
     token = settings.get("github-token")
@@ -401,63 +410,50 @@ def get_relroot(organization, repo=None):
     return os.path.join("github", organization, repo if repo else "@organization")
 
 
-def cmd_github_backup(config, args):
+@github.command()
+@click.option("-c", "--scrub", is_flag=True, help="check backup data against original")
+@click.argument("organization")
+@click.argument("repo", required=False)
+@pass_config
+def backup(config, scrub, organization, repo):
+    """back up GitHub organization
+
+    repository name (omit to back up organization metadata)
+    """
     settings = config["settings"]
     token = settings["github-token"]
     gh = github_login(token=token)
 
-    if args.repo is not None:
-        root_dir = os.path.join(
-            settings["root"], get_relroot(args.organization, args.repo)
-        )
+    if repo is not None:
+        root_dir = os.path.join(settings["root"], get_relroot(organization, repo))
         sync_repo(
-            gh.repository(args.organization, args.repo),
+            gh.repository(organization, repo),
             root_dir,
             token,
-            scrub=args.scrub,
+            scrub=scrub,
             git_path=settings.get("github-git-path"),
         )
     else:
-        root_dir = os.path.join(settings["root"], get_relroot(args.organization))
-        sync_org(gh.organization(args.organization), root_dir)
+        root_dir = os.path.join(settings["root"], get_relroot(organization))
+        sync_org(gh.organization(organization), root_dir)
 
     print(gh.ratelimit_remaining, "requests left in quota")
 
 
-def cmd_github_ls(config, args):
-    settings = config["settings"]
+def list_repos(settings, organization):
     gh = github_login(token=settings["github-token"])
-    org = gh.organization(args.organization)
-    for repo in sorted(org.iter_repos(), key=lambda r: r.name.lower()):
+    org = gh.organization(organization)
+    return sorted(org.iter_repos(), key=lambda r: r.name.lower())
+
+
+@github.command()
+@click.argument("organization")
+@pass_config
+def ls(config, organization):
+    """list repositories in the specified GitHub organization"""
+    settings = config["settings"]
+    for repo in list_repos(settings, organization):
         print(repo.name)
-
-
-def _setup():
-    group = make_subcommand_group("github", help="low-level GitHub support")
-
-    parser = group.add_parser("auth", help="obtain OAuth token for config file")
-    parser.set_defaults(func=cmd_github_auth)
-
-    parser = group.add_parser("backup", help="back up GitHub organization")
-    parser.set_defaults(func=cmd_github_backup)
-    parser.add_argument("organization", help="organization name")
-    parser.add_argument(
-        "repo",
-        nargs="?",
-        help="repository name (omit to back up organization metadata)",
-    )
-    parser.add_argument(
-        "-c", "--scrub", action="store_true", help="check backup data against original"
-    )
-
-    parser = group.add_parser(
-        "ls", help="list repositories in the specified GitHub organization"
-    )
-    parser.set_defaults(func=cmd_github_ls)
-    parser.add_argument("organization", help="organization name")
-
-
-_setup()
 
 
 class GitHubUnit(Unit):
@@ -478,13 +474,10 @@ class GitHubSource(Source):
         ret = []
         for org, info in self._manifest.items():
             info = info or {}
-            # Dynamically obtain list of repos
-            cmd = get_cmdline_for_subcommand(["github", "ls", org])
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-            out, _ = proc.communicate()
-            if proc.returncode:
-                raise OSError("Couldn't list GitHub repos for %s" % org)
-            repos = [r for r in out.split("\n") if r]
+
+            # obtain list of repos
+            repos = list_repos(self._settings, org)
+
             # Update org metadata
             if info.get("organization-metadata", True):
                 ret.append(GitHubUnit(self._settings, org))

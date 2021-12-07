@@ -23,9 +23,13 @@ import subprocess
 import sys
 from collections import deque
 from hashlib import sha256
+from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryFile, mkdtemp
 
-from ..command import make_subcommand_group, subparsers
+import click
+from pkg_resources import iter_entry_points
+
+from ..command import pass_config
 from ..sources import Source, Task
 from ..storage import PhysicalSnapshot, Snapshot
 from ..util import Pipeline, XAttrs, humanize_size, lockfile, make_dir_path
@@ -38,11 +42,20 @@ class Archiver:
 
     @classmethod
     def get_archiver(cls, settings, profile_name):
-        profile = settings["archivers"][profile_name]
-        for subclass in cls.__subclasses__():
-            if getattr(subclass, "LABEL", None) == profile["archiver"]:
-                return subclass(profile_name, profile)
-        raise ValueError("No such archiver")
+        try:
+            profile = settings["archivers"][profile_name]
+        except KeyError:
+            raise click.UsageError(f"Archive profile '{profile_name}' not found")
+
+        archiver = profile.get("archiver")
+        for entry_point in iter_entry_points("deltaic.archivers", archiver):
+            subclass = entry_point.load()
+            assert entry_point.name == subclass.LABEL
+            return subclass(profile_name, profile)
+
+        raise click.UsageError(
+            f"Archiver '{archiver}' in profile '{profile_name}' not found"
+        )
 
     def list_sets(self):
         # Return dict: set_name -> dict of properties.
@@ -552,7 +565,7 @@ def archive_snapshot(config, archiver, snapshot):
         os.rmdir(snapshot_dir)
 
 
-def prune(settings, archiver):
+def prune_archives(settings, archiver):
     keep_count = archiver.profile.get("keep-count", 1)
     sets = SnapshotArchiveSet.list(archiver)
     # Delete all incomplete sets, ignoring the most recent set
@@ -571,27 +584,60 @@ def prune(settings, archiver):
         set.delete()
 
 
-def cmd_run(config, args):
+@click.group()
+@click.option(
+    "-p",
+    "--profile",
+    metavar="PROFILE",
+    default="default",
+    show_default=True,
+    help="archiver profile",
+)
+@click.pass_context
+def archive(ctx, profile):
+    """offsite archiving"""
+    settings = ctx.obj["settings"]
+    ctx.obj = Archiver.get_archiver(settings, profile)
+
+
+pass_archiver = click.make_pass_decorator(Archiver)
+
+
+@archive.command()
+@click.option("-r", "--resume", is_flag=True, help="resume previous run")
+@click.argument("snapshot", required=False)
+@pass_config
+@pass_archiver
+def run(config, archiver, resume, snapshot):
+    """create and upload an offsite archive for every unit
+
+    Will archive the latest snapshot unless a specific SNAPSHOT has been
+    specified.
+    """
     settings = config["settings"]
-    archiver = Archiver.get_archiver(settings, args.profile)
-    if args.snapshot and args.resume:
-        raise ValueError("Cannot specify snapshot with --resume")
-    elif args.snapshot:
+
+    if snapshot is not None and resume:
+        raise click.UsageError("Cannot specify snapshot with --resume")
+
+    elif snapshot is not None:
         for snapshot in PhysicalSnapshot.list():
-            if snapshot.name == args.snapshot:
+            if snapshot.name == snapshot:
                 break
         else:
-            raise ValueError("No such snapshot")
+            raise click.UsageError("No such snapshot")
         print("Archiving selected snapshot", snapshot)
-    elif args.resume:
+
+    elif resume:
         set = SnapshotArchiveSet.list(archiver)[-1]
         snapshot = set.snapshot
         if set.complete:
-            raise ValueError("%s already completely archived" % snapshot)
+            raise click.UsageError("%s already completely archived" % snapshot)
         print("Resuming archive of snapshot", snapshot)
+
     else:
         snapshot = PhysicalSnapshot.list()[-1]
         print("Archiving snapshot", snapshot)
+
     snapshot = snapshot.get_physical(settings)
     with lockfile(settings, "archive"):
         if not archive_snapshot(config, archiver, snapshot):
@@ -601,34 +647,41 @@ def cmd_run(config, args):
                 file=sys.stderr,
             )
             print('Use "deltaic archive run -r" to resume.', file=sys.stderr)
-            return 1
+            sys.exit(1)
 
 
-def cmd_cost(config, args):
-    settings = config["settings"]
-    archiver = Archiver.get_archiver(settings, args.profile)
+@archive.command()
+@pass_archiver
+def cost(archiver):
+    """calculate storage costs"""
     archiver.report_cost()
 
 
-def cmd_ls(config, args):
-    settings = config["settings"]
-    archiver = Archiver.get_archiver(settings, args.profile)
-    for set in SnapshotArchiveSet.list(archiver):
-        if args.set and args.set != set.snapshot.name:
+@archive.command()
+@click.option("-s", "--sets", is_flag=True, help="list archive sets")
+@click.argument("set_", required=False)
+@pass_archiver
+def ls(archiver, sets, set_):
+    """list existing offsite archives
+
+    Optionally specify which archive SET to examine
+    """
+    for archive_set in SnapshotArchiveSet.list(archiver):
+        if set_ and set_ != archive_set.snapshot.name:
             continue
-        if args.sets:
+        if sets:
             print(
                 "%s %5d %10s  %s %s"
                 % (
-                    set.snapshot.name,
-                    set.count,
-                    humanize_size(set.size),
-                    "  complete" if set.complete else "incomplete",
-                    "protected" if set.protected else "",
+                    archive_set.snapshot.name,
+                    archive_set.count,
+                    humanize_size(archive_set.size),
+                    "  complete" if archive_set.complete else "incomplete",
+                    "protected" if archive_set.protected else "",
                 )
             )
         else:
-            for _, archive in sorted(set.get_archives().items()):
+            for _, archive in sorted(archive_set.get_archives().items()):
                 print(
                     "%s %10s %s"
                     % (
@@ -639,124 +692,93 @@ def cmd_ls(config, args):
                 )
 
 
-def cmd_retrieve(config, args):
-    settings = config["settings"]
-    archiver = Archiver.get_archiver(settings, args.profile)
-    set = SnapshotArchiveSet(archiver, Snapshot(args.snapshot))
-    archives = [set.get_archive(unit) for unit in args.unit]
-    max_rate = int(args.max_rate * (1 << 30)) if args.max_rate is not None else None
-    make_dir_path(args.destdir)
-    if not os.path.isdir(args.destdir):
-        raise OSError("Destination is not a directory")
+@archive.command()
+@click.option(
+    "-r",
+    "--max-rate",
+    type=float,
+    help="maximum retrieval rate in (possibly fractional) GiB/hour",
+)
+@click.argument("snapshot")
+@click.argument(
+    "destdir",
+    type=click.Path(
+        exists=False, file_okay=False, writable=True, resolve_path=True, path_type=Path
+    ),
+)
+@click.argument("unit", required=True, nargs=-1)
+@pass_archiver
+def retrieve(archiver, max_rate, snapshot, destdir, unit):
+    """download offsite archives to the specified directory"""
+    set = SnapshotArchiveSet(archiver, Snapshot(snapshot))
+    archives = [set.get_archive(unit_) for unit_ in unit]
+    max_rate = int(max_rate * (1 << 30)) if max_rate is not None else None
+
+    destdir.mkdir(parents=True, exist_ok=True)
+
     ret = 0
-    for archive, result in set.retrieve_archives(
-        args.destdir, archives, max_rate=max_rate
-    ):
+    for archive, result in set.retrieve_archives(destdir, archives, max_rate=max_rate):
         if isinstance(result, Exception):
             print(f"{archive.unit_name}: {result}", file=sys.stderr)
             ret = 1
         else:
             print(archive.unit_name)
-    return ret
+    if ret != 0:
+        sys.exit(ret)
 
 
-def cmd_unpack(config, args):
+@archive.command()
+@click.argument(
+    "destdir",
+    type=click.Path(
+        exists=False, file_okay=False, writable=True, resolve_path=True, path_type=Path
+    ),
+)
+@click.argument("file_", required=True, nargs=-1)
+@pass_config
+def unpack(config, destdir, file_):
+    """unpack downloaded archives to the specified directory
+
+    To avoid repeated passphrase prompts, ensure gpg-agent is running in your
+    session.
+    """
     settings = config["settings"]
+
     packer = ArchivePacker(settings)
-    make_dir_path(args.destdir)
-    if not os.path.isdir(args.destdir):
-        raise OSError("Destination is not a directory")
-    for file in args.file:
-        packer.unpack(file, args.destdir)
+
+    destdir.mkdir(parents=True, exists_ok=True)
+
+    for filename in file_:
+        packer.unpack(filename, destdir)
 
 
-def cmd_prune(config, args):
+@archive.command()
+@pass_config
+@pass_archiver
+def prune(config, archiver):
+    """delete old offsite archives"""
     settings = config["settings"]
-    archiver = Archiver.get_archiver(settings, args.profile)
-    prune(settings, archiver)
+    prune_archives(settings, archiver)
 
 
-def cmd_resync(config, args):
-    settings = config["settings"]
-    archiver = Archiver.get_archiver(settings, args.profile)
+@archive.command()
+@pass_archiver
+def resync(archiver):
+    """resynchronize index with data"""
     archiver.resync()
 
 
-def cmd_unit(config, args):
-    settings = config["settings"]
-    archiver = Archiver.get_archiver(settings, args.profile)
-    set = SnapshotArchiveSet(archiver, Snapshot(args.snapshot))
-    archive = set.get_archive(args.unit)
-    archive_unit(config, archive, args.mountpoint)
+@archive.command()
+@click.argument("snapshot")
+@click.argument("mountpoint")
+@click.argument("unit")
+@pass_config
+@pass_archiver
+def unit(config, archiver, snapshot, mountpoint, unit):
+    """low-level command to upload a single offsite archive
 
-
-def _setup():
-    group = make_subcommand_group("archive", help="offsite archiving")
-    group.parser.add_argument(
-        "-p", "--profile", default="default", help="archiver profile"
-    )
-
-    parser = group.add_parser(
-        "run", help="create and upload an offsite archive for every unit"
-    )
-    parser.set_defaults(func=cmd_run)
-    parser.add_argument("snapshot", nargs="?", help="snapshot name")
-    parser.add_argument(
-        "-r", "--resume", action="store_true", help="resume previous run"
-    )
-
-    parser = group.add_parser("cost", help="calculate storage costs")
-    parser.set_defaults(func=cmd_cost)
-
-    parser = group.add_parser("ls", help="list existing offsite archives")
-    parser.add_argument("-s", "--sets", action="store_true", help="list archive sets")
-    parser.add_argument("set", nargs="?", help="archive set to examine")
-    parser.set_defaults(func=cmd_ls)
-
-    parser = group.add_parser(
-        "retrieve", help="download offsite archives to the specified directory"
-    )
-    parser.set_defaults(func=cmd_retrieve)
-    parser.add_argument("snapshot", help="snapshot name")
-    parser.add_argument("destdir", metavar="dest-dir", help="destination directory")
-    parser.add_argument("unit", nargs="+", help="unit name")
-    parser.add_argument(
-        "-r",
-        "--max-rate",
-        metavar="RATE",
-        type=float,
-        help="maximum retrieval rate in (possibly fractional) GiB/hour",
-    )
-
-    parser = group.add_parser(
-        "unpack",
-        help="unpack downloaded archives to the specified directory",
-        description="To avoid repeated passphrase prompts, ensure "
-        + "gpg-agent is running in your session.",
-    )
-    parser.set_defaults(func=cmd_unpack)
-    parser.add_argument(
-        "destdir", metavar="dest-dir", help="destination root directory"
-    )
-    parser.add_argument("file", nargs="+", help="archive file")
-
-    parser = group.add_parser("prune", help="delete old offsite archives")
-    parser.set_defaults(func=cmd_prune)
-
-    parser = group.add_parser("resync", help="resynchronize index with data")
-    parser.set_defaults(func=cmd_resync)
-
-    parser = group.add_parser(
-        "unit", help="low-level command to upload a single offsite archive"
-    )
-    parser.set_defaults(func=cmd_unit)
-    parser.add_argument("snapshot", help="snapshot name")
-    parser.add_argument("mountpoint", help="current mountpoint of specified snapshot")
-    parser.add_argument("unit", help="unit name")
-
-
-_setup()
-
-
-# Now import submodules that need these definitions
-from . import aws, googledrive
+    MOUNTPOINT is the current mountpoint of the specified snapshot
+    """
+    archive_set = SnapshotArchiveSet(archiver, Snapshot(snapshot))
+    archive = archive_set.get_archive(unit)
+    archive_unit(config, archive, mountpoint)

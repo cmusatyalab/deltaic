@@ -22,6 +22,7 @@ import os
 import sys
 import time
 
+import click
 import httplib2
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -29,7 +30,7 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from oauth2client import client
 from oauth2client.file import Storage
 
-from ..command import make_subcommand_group
+from ..command import pass_config
 from ..util import humanize_size
 from . import Archiver
 
@@ -79,7 +80,16 @@ def _get_drive_service(settings):
     return build("drive", "v2", http=auth_http)
 
 
-def cmd_googledrive_auth(config, args):
+@click.group()
+def googledrive():
+    """low-level Google Drive support"""
+    pass
+
+
+@googledrive.command()
+@pass_config
+def auth(config):
+    """obtain authorization token"""
     settings = config["settings"]
 
     client_id = settings.get("googledrive-client-id")
@@ -110,7 +120,10 @@ def cmd_googledrive_auth(config, args):
     storage.put(credentials)
 
 
-def cmd_googledrive_test(config, args):
+@googledrive.command()
+@pass_config
+def test(config):
+    """test Google Drive connection"""
     settings = config["settings"]
     service = _get_drive_service(settings)
 
@@ -119,7 +132,10 @@ def cmd_googledrive_test(config, args):
     print(json.dumps(result, indent=1))
 
 
-def cmd_googledrive_ls(config, args):
+@googledrive.command()
+@pass_config
+def ls(config):
+    """(debug) dump metadata for all files we have access to"""
     settings = config["settings"]
     service = _get_drive_service(settings)
 
@@ -128,13 +144,17 @@ def cmd_googledrive_ls(config, args):
     print(json.dumps(result["items"], indent=1))
 
 
-def cmd_googledrive_rm(config, args):
+@googledrive.command()
+@click.argument("fileid")
+@pass_config
+def rm(config, fileid):
+    """(debug) remove drive object by fileid"""
     settings = config["settings"]
     service = _get_drive_service(settings)
 
-    result = service.files().get(fileId=args.fileid).execute()
-    foreverholdyourpeace("Deleting {} ({})".format(result["title"], args.fileid))
-    service.files().delete(fileId=args.fileid).execute()
+    result = service.files().get(fileId=fileid).execute()
+    foreverholdyourpeace("Deleting {} ({})".format(result["title"], fileid))
+    service.files().delete(fileId=fileid).execute()
 
 
 class _PartialFile:
@@ -464,23 +484,3 @@ which costs $%(storage_cost).2f/month.
                     "storage_cost": cost,
                 }
             )
-
-
-def _setup():
-    group = make_subcommand_group("googledrive", help="low-level Google Drive support")
-
-    parser = group.add_parser("auth", help="obtain authorization token")
-    parser.set_defaults(func=cmd_googledrive_auth)
-
-    parser = group.add_parser("test", help="test Google Drive connection")
-    parser.set_defaults(func=cmd_googledrive_test)
-    parser = group.add_parser(
-        "ls", help="(debug) dump metadata for all files we have access to"
-    )
-    parser.set_defaults(func=cmd_googledrive_ls)
-    parser = group.add_parser("rm", help="(debug) remove drive object by fileid")
-    parser.add_argument("fileid")
-    parser.set_defaults(func=cmd_googledrive_rm)
-
-
-_setup()

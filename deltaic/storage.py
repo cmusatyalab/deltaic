@@ -20,9 +20,12 @@
 
 import os
 import subprocess
+import sys
 from datetime import date, datetime
 
-from .command import subparsers
+import click
+
+from .command import pass_config
 from .util import humanize_size, make_dir_path
 
 
@@ -232,27 +235,37 @@ class StorageStatus:
         return printed
 
 
-def cmd_df(config, args):
+@click.command()
+@click.option("-c", "--check", is_flag=True, help="only report problems")
+@pass_config
+def df(config, check):
+    """report available disk space"""
     settings = config["settings"]
     vg, lv = settings["backup-lv"].split("/")
     status = StorageStatus(vg, lv, settings["root"])
-    if args.check:
+    if check:
         threshold = settings.get("df-warning", 5)
     else:
         threshold = 100
     printed = status.report(threshold)
-    if args.check and printed:
-        return 1
+    if check and printed:
+        sys.exit(1)
 
 
-def cmd_ls(config, args):
+@click.command()
+def ls():
+    """list snapshots"""
     for snapshot in PhysicalSnapshot.list():
         print(snapshot)
 
 
-def cmd_mount(config, args):
+@click.command()
+@click.argument("snapshot", nargs=-1, required=True)
+@pass_config
+def mount(config, snapshot):
+    """mount one or more snapshots"""
     settings = config["settings"]
-    snapshots = [Snapshot(s).get_physical(settings) for s in args.snapshot]
+    snapshots = [Snapshot(s).get_physical(settings) for s in snapshot]
     for snapshot in snapshots:
         mountpoint = make_dir_path(settings["root"], "Snapshots", snapshot.name)
         try:
@@ -263,11 +276,16 @@ def cmd_mount(config, args):
         print(mountpoint)
 
 
-def cmd_umount(config, args):
+@click.command()
+@click.option("-a", "--all", is_flag=True, help="unmount all mounted snapshots")
+@click.argument("snapshot", nargs=-1)
+@pass_config
+def umount(config, all, snapshot):
+    """unmount one or more snapshots"""
     settings = config["settings"]
     root_dir = settings["root"]
     snapshot_dir = os.path.join(root_dir, "Snapshots")
-    if args.all:
+    if all:
         root_dev = os.stat(root_dir).st_dev
         snapshots = [
             name
@@ -275,36 +293,11 @@ def cmd_umount(config, args):
             if os.stat(os.path.join(snapshot_dir, name)).st_dev != root_dev
         ]
     else:
-        snapshots = args.snapshot
-        if not snapshots:
+        if not snapshot:
             raise ValueError("At least one snapshot must be specified")
-    snapshots = [Snapshot(s).get_physical(settings) for s in snapshots]
+
+    snapshots = [Snapshot(s).get_physical(settings) for s in snapshot]
     for snapshot in snapshots:
         mountpoint = os.path.join(snapshot_dir, snapshot.name)
         snapshot.umount(mountpoint)
         os.rmdir(mountpoint)
-
-
-def _setup():
-    parser = subparsers.add_parser("df", help="report available disk space")
-    parser.set_defaults(func=cmd_df)
-    parser.add_argument(
-        "-c", "--check", action="store_true", help="only report problems"
-    )
-
-    parser = subparsers.add_parser("ls", help="list snapshots")
-    parser.set_defaults(func=cmd_ls)
-
-    parser = subparsers.add_parser("mount", help="mount one or more snapshots")
-    parser.set_defaults(func=cmd_mount)
-    parser.add_argument("snapshot", nargs="+", help="snapshot name")
-
-    parser = subparsers.add_parser("umount", help="unmount one or more snapshots")
-    parser.set_defaults(func=cmd_umount)
-    parser.add_argument(
-        "-a", "--all", action="store_true", help="unmount all mounted snapshots"
-    )
-    parser.add_argument("snapshot", nargs="*", help="snapshot name")
-
-
-_setup()

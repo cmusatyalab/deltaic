@@ -25,6 +25,9 @@ import sys
 from datetime import date, datetime
 from threading import Thread
 
+import click
+from pkg_resources import iter_entry_points
+
 from ..command import get_cmdline_for_subcommand
 from ..util import make_dir_path
 
@@ -52,6 +55,7 @@ class Task:
         self._threads = [Thread(target=self._worker) for i in range(thread_count)]
 
     def start(self):
+        self._ctx = click.get_current_context()
         for thread in self._threads:
             thread.start()
 
@@ -62,8 +66,9 @@ class Task:
             except queue.Empty:
                 return
             try:
-                if not self._execute(unit):
-                    self._success = False
+                with self._ctx.scope():
+                    if not self._execute(unit):
+                        self._success = False
             except BaseException:
                 self._success = False
                 raise
@@ -94,7 +99,12 @@ class Task:
                 fh.write("# %s\n" % " ".join(command))
                 fh.flush()
             ret = subprocess.call(
-                command, stdin=null, stdout=out, stderr=err, close_fds=True
+                command,
+                stdin=null,
+                stdout=out,
+                stderr=err,
+                close_fds=True,
+                env={"PYTHONUNBUFFERED": "1"},
             )
             for fh in out, err:
                 if ret < 0:
@@ -137,7 +147,7 @@ class Task:
                 if truncated:
                     excerpt_lines.insert(0, "[...]")
                 # Serialize
-                excerpt = "\n".join(" " * 3 + l for l in excerpt_lines)
+                excerpt = "\n".join(" " * 3 + line for line in excerpt_lines)
             sys.stderr.write(
                 "Failed:  {}\n   {}\n{}\n".format(name, " ".join(command), excerpt)
             )
@@ -164,9 +174,10 @@ class Source:
     @classmethod
     def get_sources(cls):
         sources = {}
-        for subclass in cls.__subclasses__():
-            if hasattr(subclass, "LABEL"):
-                sources[subclass.LABEL] = subclass
+        for entry_point in iter_entry_points("deltaic.sources"):
+            source = entry_point.load()
+            assert entry_point.name == source.LABEL
+            sources[entry_point.name] = source
         return sources
 
     def get_units(self):
@@ -175,7 +186,3 @@ class Source:
     def get_backup_task(self):
         thread_count = self._settings.get("%s-workers" % self.LABEL, 1)
         return _SourceBackupTask(self._settings, thread_count, self.get_units())
-
-
-# Now import submodules that need these definitions
-from . import coda, github, rbd, rgw, rsync

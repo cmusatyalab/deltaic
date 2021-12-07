@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014 Carnegie Mellon University
+# Copyright (c) 2014-2021 Carnegie Mellon University
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of version 2 of the GNU General Public License as
@@ -17,8 +17,9 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-from . import sources as _  # Load all sources
-from .command import subparsers
+import click
+
+from .command import pass_config
 from .sources import Source
 from .storage import PhysicalSnapshot
 from .util import lockfile
@@ -38,27 +39,21 @@ def back_up_units(config):
     return success
 
 
-def cmd_run(config, args):
+@click.command()
+@click.option(
+    " /-S",
+    "--snapshot/--no-snapshot",
+    default=True,
+    show_default=True,
+    help="snapshot backup volume",
+)
+@pass_config
+def run(config, snapshot):
+    """run a backup"""
     settings = config["settings"]
     with lockfile(settings, "backup"):
         success = back_up_units(config)
-        if args.snapshot:
+        if snapshot:
             PhysicalSnapshot.create(settings, verbose=True)
         if not success:
             return 1
-
-
-def _setup():
-    parser = subparsers.add_parser("run", help="run a backup")
-    parser.set_defaults(func=cmd_run)
-    parser.add_argument(
-        "-S",
-        "--no-snapshot",
-        dest="snapshot",
-        action="store_false",
-        default=True,
-        help="skip snapshot of backup volume",
-    )
-
-
-_setup()

@@ -21,7 +21,7 @@ import os
 import sys
 from getpass import getuser
 
-from .command import subparsers
+import click
 
 TEMPLATES = {
     "crontab": """
@@ -45,27 +45,16 @@ Defaults:%(user)s !requiretty
 }
 
 
-def cmd_mkconf(config, args):
+@click.command()
+@click.option("--email", default="root", help="email address to send status reports")
+@click.argument("file", type=click.Choice(TEMPLATES), required=True)
+def mkconf(email, file):
+    """generate a config file template"""
     print(
-        TEMPLATES[args.file].strip()
+        TEMPLATES[file].strip()
         % {
             "user": getuser(),
             "prog": os.path.abspath(sys.argv[0]),
-            "email": args.email,
+            "email": email,
         }
     )
-
-
-def _setup():
-    parser = subparsers.add_parser("mkconf", help="generate a config file template")
-    parser.set_defaults(func=cmd_mkconf)
-    parser.add_argument("file", choices=TEMPLATES, help="config file to generate")
-    parser.add_argument(
-        "--email",
-        default="root",
-        metavar="ADDRESS",
-        help="email address to send status reports",
-    )
-
-
-_setup()
