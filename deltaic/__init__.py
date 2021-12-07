@@ -1,18 +1,9 @@
+# SPDX-FileCopyrightText: 2001-2021 Python Software Foundation
+# SPDX-License-Identifier: 0BSD
 #
-# Deltaic - an efficient backup system supporting multiple data sources
+# example from https://docs.python.org/3/library/pkgutil.html
 #
-# Copyright (c) 2014 Carnegie Mellon University
-#
-# This program is free software; you can redistribute it and/or modify it
-# under the terms of version 2 of the GNU General Public License as
-# published by the Free Software Foundation.
-#
-# This program is distributed in the hope that it will be useful, but
-# WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-# or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-# for more details.
-#
-# You should have received a copy of the GNU General Public License along
-# with this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-#
+
+from pkgutil import extend_path
+
+__path__ = extend_path(__path__, __name__)

@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2021 Carnegie Mellon University
+# SPDX-License-Identifier: 0BSD
+
+repos:
+  - repo: meta
+    hooks:
+      - id: check-hooks-apply
+      - id: check-useless-excludes
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.0.1
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: https://github.com/asottile/yesqa
+    rev: v1.3.0
+    hooks:
+      - id: yesqa
+        additional_dependencies: &flake8_deps
+          - flake8-bugbear
+          - flake8-comprehensions
+          #- flake8-simplify
+
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v2.29.1
+    hooks:
+      - id: pyupgrade
+        name: Modernize python code
+        args: ["--py36-plus"]
+
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.10.1
+    hooks:
+      - id: isort
+        name: Reorder python imports with isort
+
+  - repo: https://github.com/psf/black
+    rev: 21.12b0
+    hooks:
+      - id: black
+        name: Format python code with black
+        language_version: python3
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: 4.0.1
+    hooks:
+      - id: flake8
+        name: Lint python code with flake8
+        additional_dependencies: *flake8_deps
+
+  #- repo: https://github.com/fsfe/reuse-tool
+  #  rev: v0.13.0
+  #  hooks:
+  #    - id: reuse
+  #      name: Check SPDX license tags
