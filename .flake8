@@ -7,4 +7,4 @@ max-line-length = 88
 extend-ignore = E203
 
 per-file-ignores =
-    deltaic/template.py: E501
+    src/deltaic/template.py: E501
