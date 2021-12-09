@@ -26,10 +26,12 @@ import errno
 import fcntl
 import os
 import random
+import secrets
 import subprocess
 from contextlib import contextmanager
 from io import BytesIO
 from tempfile import mkdtemp, mkstemp
+from typing import Union
 
 import xattr
 from pybloom_live import ScalableBloomFilter
@@ -88,6 +90,18 @@ def gc_directory_tree(root_dir, valid_paths, report_callback=None):
             except OSError:
                 # Directory not empty
                 pass
+
+
+@contextmanager
+def noop(value=None):
+    yield value
+
+
+def try_open(path: Union[str, bytes, os.PathLike], mode: str):
+    try:
+        return open(path, "rb")
+    except OSError:
+        return noop()
 
 
 @contextmanager
@@ -165,33 +179,29 @@ class UpdateFile:
         # "buf = input_data.read(count)" is spelled "buf = yield count".
 
         # Open old file if it exists
-        try:
-            oldfh = open(path, "rb")
-        except OSError:
-            oldfh = None
-
-        try:
+        with try_open(path, "rb") as oldfh:
             # Find length of common prefix
             prefix_len = 0
             databuf = b""
-            while oldfh:
-                oldbuf = oldfh.read(block_size)
-                if oldbuf == b"":
-                    databuf = yield block_size
-                    if databuf == b"":
-                        # Files are identical
-                        self.modified = False
-                        return
-                    break
-                databuf = yield len(oldbuf)
-                if oldbuf != databuf:
-                    break
-                prefix_len += len(databuf)
+            if oldfh is not None:
+                while oldfh:
+                    oldbuf = oldfh.read(block_size)
+                    if oldbuf == b"":
+                        databuf = yield block_size
+                        if databuf == b"":
+                            # Files are identical
+                            self.modified = False
+                            return
+                        break
+                    databuf = yield len(oldbuf)
+                    if oldbuf != databuf:
+                        break
+                    prefix_len += len(databuf)
 
             # Write new file
             with write_atomic(path, prefix=prefix, suffix=suffix) as newfh:
                 # Copy common prefix
-                if oldfh:
+                if oldfh is not None:
                     oldfh.seek(0)
                     while prefix_len:
                         buf = oldfh.read(min(block_size, prefix_len))
@@ -209,9 +219,6 @@ class UpdateFile:
                     newfh.write(databuf)
 
             self.modified = True
-        finally:
-            if oldfh:
-                oldfh.close()
 
 
 def update_file(path, data, prefix=TEMPFILE_PREFIX, suffix="", block_size=256 << 10):
@@ -237,7 +244,7 @@ def update_file(path, data, prefix=TEMPFILE_PREFIX, suffix="", block_size=256 <<
 
 
 def _test_update_file():
-    data = "".join(chr(random.getrandbits(8)) for i in range((2 << 20) + 30))
+    data = secrets.token_bytes((2 << 20) + 30)
     dirpath = mkdtemp(prefix="update-file-")
     path = os.path.join(dirpath, "file")
 
@@ -396,7 +403,7 @@ def make_dir_path(*args):
     return path
 
 
-def humanize_size(size):
+def humanize_size(size: float) -> str:
     units = ("  B", "KiB", "MiB", "GiB", "TiB")
     index = 0
     while size >= 1024 and index < len(units):
@@ -433,7 +440,7 @@ class Pipeline:
         if terminate:
             for proc in self._procs:
                 proc.terminate()
-        failed = False
+        failed = 0
         while self._procs:
             proc = self._procs.pop()
             proc.wait()

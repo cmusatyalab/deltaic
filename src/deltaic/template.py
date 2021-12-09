@@ -49,7 +49,7 @@ Defaults:%(user)s !requiretty
 
 @click.command()
 @click.option("--email", default="root", help="email address to send status reports")
-@click.argument("file", type=click.Choice(TEMPLATES), required=True)
+@click.argument("file", type=click.Choice(list(TEMPLATES)), required=True)
 def mkconf(email, file):
     """generate a config file template"""
     print(

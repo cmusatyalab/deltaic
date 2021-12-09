@@ -228,12 +228,12 @@ class StorageStatus:
         printed = False
         for label, humanize, value, pct in data:
             if humanize:
-                value = humanize_size(value)
+                value_string = humanize_size(value)
             else:
-                value = str(value) + 4 * " "
+                value_string = str(value) + 4 * " "
             if pct < pct_threshold:
                 labelc = label + ":"
-                print(f"{labelc:<25} {value:>14} ({pct:4.1f}%)")
+                print(f"{labelc:<25} {value_string:>14} ({pct:4.1f}%)")
                 printed = True
         return printed
 

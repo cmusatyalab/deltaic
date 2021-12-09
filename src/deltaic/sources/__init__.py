@@ -26,6 +26,7 @@ import subprocess
 import sys
 from datetime import date, datetime
 from threading import Thread
+from typing import List, Optional, Union
 
 import click
 from pkg_resources import iter_entry_points
@@ -36,8 +37,8 @@ from ..util import make_dir_path
 
 class Unit:
     def __init__(self):
-        self.root = None
-        self.backup_args = None
+        self.root: Union[str, os.PathLike] = ""
+        self.backup_args: List[str] = []
 
     def __str__(self):
         return self.root
@@ -50,7 +51,7 @@ class Task:
     LOG_EXCERPT_MAX_LINES = 10
 
     def __init__(self, thread_count, units):
-        self._queue = queue.Queue()
+        self._queue: queue.Queue = queue.Queue()
         for unit in units:
             self._queue.put(unit)
         self._success = True
@@ -167,6 +168,8 @@ class _SourceBackupTask(Task):
 
 
 class Source:
+    LABEL: Optional[str] = None
+
     def __init__(self, config):
         self._settings = config.get("settings", {})
         self._manifest = config.get(self.LABEL, {})

@@ -21,6 +21,7 @@
 
 import os
 from datetime import date, timedelta
+from typing import Any, Dict, List, Set
 
 import click
 
@@ -28,7 +29,9 @@ from .command import pass_config
 from .storage import PhysicalSnapshot
 
 
-def select_snapshots_to_remove(settings, snapshots):
+def select_snapshots_to_remove(
+    settings: Dict[str, Any], snapshots: List[PhysicalSnapshot]
+):
     conf_duplicate_days = settings.get("gc-duplicate-days", 14)
     conf_daily_weeks = settings.get("gc-daily-weeks", 8)
     conf_weekly_months = settings.get("gc-weekly-months", 12)
@@ -39,7 +42,7 @@ def select_snapshots_to_remove(settings, snapshots):
 
     # First filter out all but the last backup per day, except for recent
     # backups
-    filtered = []
+    filtered: List[PhysicalSnapshot] = []
     prev = None
     for cur in sorted(snapshots, reverse=True):
         if prev is None or prev.date != cur.date or cur.date > duplicate_thresh:
@@ -81,7 +84,7 @@ def prune_logs(root_dir, distinct_days):
         raise err
 
     for dirpath, _, filenames in os.walk(root_dir, onerror=handle_error):
-        days = set()
+        days: Set[str] = set()
         for filename in sorted(filenames, reverse=True):
             day, _ = os.path.splitext(filename)
             if day in days:

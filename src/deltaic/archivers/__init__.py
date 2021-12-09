@@ -27,6 +27,7 @@ from collections import deque
 from hashlib import sha256
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryFile, mkdtemp
+from typing import IO
 
 import click
 from pkg_resources import iter_entry_points
@@ -270,7 +271,7 @@ class ArchivePacker:
 
         pipe_r, pipe_w = os.pipe()
         with contextlib.ExitStack() as stack:
-            in_fh = stack.enter_context(os.fdopen(pipe_r, "r"))
+            in_fh = stack.enter_context(os.fdopen(pipe_r, "rb"))
             stack.enter_context(Pipeline(cmds, out_fh=pipe_w, env=self._gpg_env))
 
             os.close(pipe_w)
@@ -301,22 +302,21 @@ class ArchivePacker:
             )
         compress_opt = self._compress_option(info.compression)
 
-        fh = open(in_file, "rb")
-        try:
+        with open(in_file, "rb") as fh:
+            in_fh: IO[bytes] = fh
             if info.encryption == "gpg":
                 # We can't decrypt and untar in a single pipeline, because
                 # GPG wouldn't verify the signature until after tar had
                 # already received a lot of untrusted data.
                 fh2 = TemporaryFile(dir=self._spool_dir, prefix="unpack-")
                 pipe_r, pipe_w = os.pipe()
-                status_pipe = os.fdopen(pipe_r, "r")
-                try:
+                with os.fdopen(pipe_r, "r") as status_pipe:
                     # Ensure we won't be fooled by an archive which is
                     # encrypted but not signed.  While we're at it, ensure
                     # the configured signing key was used.
                     cmd = self._gpg_cmd(["-d", "--status-fd", str(pipe_w)])
                     proc = subprocess.Popen(
-                        cmd, stdin=fh, stdout=fh2, env=self._gpg_env
+                        cmd, stdin=in_fh, stdout=fh2, env=self._gpg_env
                     )
                     os.close(pipe_w)
 
@@ -341,22 +341,22 @@ class ArchivePacker:
                             "Could not verify GPG signature with configured signing key"
                         )
                     fh2.seek(0)
-                finally:
-                    status_pipe.close()
-                    fh.close()
-                    fh = fh2
+
+                    # finally
+                    # fh.close()
+                    in_fh = fh2
 
             elif info.encryption == "none":
                 # No signature, so check SHA-256.
                 hash = sha256()
                 while True:
-                    buf = fh.read(self.BUFLEN)
+                    buf = in_fh.read(self.BUFLEN)
                     if not buf:
                         break
                     hash.update(buf)
                 if hash.hexdigest() != info.sha256:
                     raise OSError("SHA-256 mismatch")
-                fh.seek(0)
+                in_fh.seek(0)
 
             else:
                 raise ValueError("Unknown encryption method")
@@ -373,9 +373,7 @@ class ArchivePacker:
             ]
             if compress_opt:
                 tar.append(compress_opt)
-            Pipeline([tar], in_fh=fh).close()
-        finally:
-            fh.close()
+            Pipeline([tar], in_fh=in_fh).close()
 
 
 class _ArchiveTask(Task):

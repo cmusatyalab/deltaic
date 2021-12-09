@@ -27,6 +27,7 @@ import subprocess
 import sys
 import time
 from getpass import getpass
+from typing import Dict, List
 
 import click
 import github3
@@ -228,8 +229,8 @@ def update_comments(repo, root_dir, scrub=False):
     valid_paths = BloomSet()
     comment_dir = make_dir_path(root_dir, "comments")
     valid_paths.add(comment_dir)
-    commit_comments = {}
-    commit_timestamps = {}
+    commit_comments: Dict[str, List[Dict[str, str]]] = {}
+    commit_timestamps: Dict[str, str] = {}
     comment_iter = cond_iter(comment_dir, repo.iter_comments, scrub=scrub)
     for comment in comment_iter:
         info = {

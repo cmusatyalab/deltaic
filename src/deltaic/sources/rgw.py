@@ -27,6 +27,8 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 from multiprocessing import Pool
+from pathlib import Path
+from typing import Dict, Optional
 
 import boto
 import click
@@ -160,11 +162,16 @@ def enumerate_keys_from_directory(root_dir):
             yield path_to_key_name(root_dir, filepath)
 
 
+root_dir: Optional[Path] = None
+scrub: bool = False
+download_bucket: Optional[boto.s3.bucket.Bucket] = None
+
+
 def sync_pool_init(
     root_dir_, server, bucket_name, access_key, secret_key, secure, scrub_
 ):
     global root_dir, download_bucket, scrub
-    root_dir = root_dir_
+    root_dir = Path(root_dir_)
     scrub = scrub_
     conn = connect(server, access_key, secret_key, secure=secure)
     download_bucket = conn.get_bucket(bucket_name)
@@ -190,6 +197,9 @@ def sync_key(args):
         return (None, None)
 
     make_dir_path(out_dir)
+
+    # should have been set by pool initializer
+    assert download_bucket is not None
 
     key = download_bucket.new_key(key_name)
     updated = False
@@ -246,19 +256,19 @@ def sync_bucket(server, bucket_name, root_dir, workers, scrub, secure):
 
     # Keys
     start_time = time.time()
-    pool = Pool(
+    with Pool(
         workers,
         sync_pool_init,
         [root_dir, server, bucket_name, access_key, secret_key, secure, scrub],
-    )
-    iter, key_set = enumerate_keys(bucket)
-    for path, error in pool.imap_unordered(sync_key, iter):
-        if error:
-            warn(error)
-        elif path:
-            print(path)
-    pool.close()
-    pool.join()
+    ) as pool:
+        iter, key_set = enumerate_keys(bucket)
+        for path, error in pool.imap_unordered(sync_key, iter):
+            if error:
+                warn(error)
+            elif path:
+                print(path)
+        pool.close()
+        pool.join()
 
     # Bucket metadata
     update_file(key_name_to_path(root_dir, "bucket", "A"), bucket.get_xml_acl())
@@ -312,10 +322,16 @@ def sync_bucket(server, bucket_name, root_dir, workers, scrub, secure):
     return not warned
 
 
+upload_server: str = ""
+upload_bucket_name: str = ""
+upload_secure: bool = False
+upload_buckets: Dict[str, boto.s3.bucket.Bucket] = {}
+
+
 def upload_pool_init(root_dir_, server, bucket_name, secure):
     global root_dir, upload_server, upload_bucket_name, upload_secure
     global upload_buckets
-    root_dir = root_dir_
+    root_dir = Path(root_dir_)
     upload_server = server
     upload_bucket_name = bucket_name
     upload_secure = secure
@@ -323,11 +339,9 @@ def upload_pool_init(root_dir_, server, bucket_name, secure):
 
 
 def get_owner_name(acl_xml):
-    return (
-        ET.fromstring(acl_xml)
-        .find(f"{{{S3_NAMESPACE}}}Owner/{{{S3_NAMESPACE}}}ID")
-        .text
-    )
+    owner = ET.fromstring(acl_xml).find(f"{{{S3_NAMESPACE}}}Owner/{{{S3_NAMESPACE}}}ID")
+    assert owner is not None
+    return owner.text
 
 
 def upload_get_bucket(owner):
@@ -347,7 +361,7 @@ def upload_key(args):
     key = None
     try:
         with open(in_acl, "rb") as fh:
-            key_acl = fh.read()
+            key_acl = fh.read().decode("utf-8")
         owner = get_owner_name(key_acl)
         key = upload_get_bucket(owner).new_key(key_name)
 

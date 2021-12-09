@@ -26,6 +26,7 @@ import struct
 import subprocess
 import sys
 import uuid
+from typing import BinaryIO
 
 import click
 
@@ -99,7 +100,7 @@ class LazyWriteFile:
         self._path = path
         if create and not os.path.exists(path):
             fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o666)
-            self._fh = os.fdopen(fd, "r+b")
+            self._fh: BinaryIO = os.fdopen(fd, "r+b")
         else:
             self._fh = open(path, "rb")
 
@@ -138,7 +139,7 @@ class LazyWriteFile:
 
     def writelines(self, seq):
         self.__reopen_rw__()
-        self._fh.writelines(self, seq)
+        self._fh.writelines(seq)
 
     def truncate(self, len):
         saved_offset = self._fh.tell()
@@ -180,7 +181,7 @@ class ScrubbingFile(LazyWriteFile):
             if disk_buf != input_buf:
                 self._fh.seek(-count, 1)
                 print(f"Fixing data mismatch at {self._fh.tell()}", file=sys.stderr)
-                super(LazyWriteFile, self).write(input_buf)
+                super().write(input_buf)
             start += count
 
     def punch(self, offset, length):
@@ -191,7 +192,7 @@ class ScrubbingFile(LazyWriteFile):
             bufsize = len(buf)
             if bufsize == length and bufsize == buf.count(b"\0"):
                 return
-        super(LazyWriteFile, self).punch(offset, length)
+        super().punch(offset, length)
 
 
 def export_diff(pool, image, snapshot, basis=None, fh=subprocess.PIPE):
@@ -346,7 +347,7 @@ def backup_image(pool, image, path):
         if image != old_image:
             # Base image has changed
             if old_image is not None:
-                with contextlib.suppres(subprocess.CalledProcessError):
+                with contextlib.suppress(subprocess.CalledProcessError):
                     delete_snapshot(pool, old_image, old_snapshot)
 
             os.unlink(path)

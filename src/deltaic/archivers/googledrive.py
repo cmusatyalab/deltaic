@@ -23,6 +23,7 @@ import json
 import os
 import sys
 import time
+from typing import Any, Dict, List, Optional
 
 import click
 import httplib2
@@ -393,7 +394,7 @@ class DriveArchiver(Archiver):
         if not set_id:
             return
 
-        idmap = {}
+        idmap: Dict[str, List[Optional[Dict[str, Any]]]] = {}
         for archive_part in self._list_folder(set_id):
             properties = {
                 p["key"]: p["value"] for p in archive_part.get("properties", [])
@@ -425,20 +426,26 @@ class DriveArchiver(Archiver):
             return
 
         total_size = sum(
-            int(part["fileSize"]) for _, _, archive in archives for part in archive
+            int(part["fileSize"])
+            for _, _, archive in archives
+            for part in archive
+            if part is not None
         )
         foreverholdyourpeace(
             f"Going to retrieve {humanize_size(total_size)} of data", file=sys.stderr
         )
 
         for archive_name, archive_path, archive in archives:
-            archive_size = sum(int(part["fileSize"]) for part in archive)
+            archive_size = sum(
+                int(part["fileSize"]) for part in archive if part is not None
+            )
             print(
                 f"Retrieving {archive_name} "
                 f"({archive_size} bytes/{len(archive)} part(s))"
             )
 
             # pull archive metadata from first part
+            assert archive[0] is not None
             archive_metadata = {
                 prop["key"]: prop["value"] for prop in archive[0]["properties"]
             }

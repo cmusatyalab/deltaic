@@ -48,12 +48,13 @@ def remote_command(host, command, user="root"):
 def run_rsync(cmd):
     print(" ".join(cmd))
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    assert proc.stdout is not None
 
     # Filter out spurious log output from
     # https://bugzilla.samba.org/show_bug.cgi?id=10496
     spurious = re.compile(r"[.h][dfL]\.{8}x ")
-    for line in proc.stdout:
-        line = line.decode(sys.stdout.encoding)
+    for raw_line in proc.stdout:
+        line = raw_line.decode(sys.stdout.encoding)
         if not spurious.match(line):
             print(line.strip())
 

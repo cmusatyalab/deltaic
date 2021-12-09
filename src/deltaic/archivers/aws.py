@@ -29,6 +29,7 @@ import threading
 import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from typing import Dict, Union
 
 import boto.glacier
 import boto.sdb
@@ -235,7 +236,7 @@ class AWSArchiver(Archiver):
 
     def list_sets(self):
         now = self._now()
-        sets = {}
+        sets: Dict[str, Dict[str, Union[int, bool]]] = {}
         qstr = (
             "select `aws-set`, `aws-complete`, `aws-creation-time`, "
             + "`size` from `%s` where `aws-set` is not null"
@@ -385,7 +386,7 @@ class AWSArchiver(Archiver):
 
         # Retrieve.
         state = DownloadState(zip(archive_names, archive_sizes))
-        finished_queue = queue.Queue()
+        finished_queue: queue.Queue = queue.Queue()
         while not state.done:
             # Launch retrievals.
             timeslot = self._now(hour=True)

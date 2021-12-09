@@ -27,6 +27,7 @@ import subprocess
 import sys
 import tarfile
 from pathlib import Path
+from typing import Optional
 
 import click
 
@@ -157,12 +158,12 @@ def update_dir_from_tar(tar, root_dir):
         # Check for existing file
         path = build_path(root_dir, entry.name)
         try:
-            st = os.lstat(path)
+            st: Optional[os.stat_result] = os.lstat(path)
         except OSError:
             st = None
 
         # If entry has changed types, remove the old object
-        if st and stat.S_IFMT(st.st_mode) != entry_stat_type:
+        if st is not None and stat.S_IFMT(st.st_mode) != entry_stat_type:
             if stat.S_ISDIR(st.st_mode):
                 shutil.rmtree(path)
             else:

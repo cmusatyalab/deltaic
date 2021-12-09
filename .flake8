@@ -4,8 +4,11 @@
 # https://black.readthedocs.io/en/stable/guides/using_black_with_other_tools.html#flake8
 [flake8]
 max-line-length = 88
-extend-ignore = E203
-
+extend-ignore =
+    E203,   # Whitespace before ':'
+    SIM106, # Handle error-cases first
+    SIM115, # Use context handler for opening files
+    SIM119, # Use a dataclass
 per-file-ignores =
     src/deltaic/template.py: E501
 
