@@ -335,13 +335,10 @@ class ArchivePacker:
 
                     proc.wait()
                     if proc.returncode:
-                        raise OSError(
-                            "gpg failed with exit status %d" % proc.returncode
-                        )
+                        raise OSError(f"gpg failed with exit status {proc.returncode}")
                     if not verified:
                         raise OSError(
-                            "Could not verify GPG signature with "
-                            + "configured signing key"
+                            "Could not verify GPG signature with configured signing key"
                         )
                     fh2.seek(0)
                 finally:
@@ -467,7 +464,7 @@ class SnapshotArchiveSet:
         for archive in archives:
             out_path = os.path.join(
                 out_dir,
-                "{}:{}".format(self.snapshot.name, archive.unit_name.replace("/", "-")),
+                f"{self.snapshot.name}:{archive.unit_name.replace('/', '-')}",
             )
             if not os.path.exists(out_path):
                 archive_lookup[archive.unit_name] = archive
@@ -577,12 +574,8 @@ def prune_archives(settings, archiver):
     # ...but don't delete protected sets
     delete = [s for s in delete if not s.protected]
     for set in delete:
-        print(
-            "Pruning{} archive set {}".format(
-                " incomplete" if not set.complete else "",
-                set,
-            )
-        )
+        incomplete = " incomplete" if not set.complete else ""
+        print(f"Pruning{incomplete} archive set {set}")
         set.delete()
 
 
@@ -633,7 +626,7 @@ def run(config, archiver, resume, snapshot):
         set = SnapshotArchiveSet.list(archiver)[-1]
         snapshot = set.snapshot
         if set.complete:
-            raise click.UsageError("%s already completely archived" % snapshot)
+            raise click.UsageError(f"{snapshot} already completely archived")
         print("Resuming archive of snapshot", snapshot)
 
     else:

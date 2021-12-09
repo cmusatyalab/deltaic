@@ -61,7 +61,7 @@ def volutil_cmd(host, subcommand, args=(), volutil=None):
         "BatchMode=yes",
         "-o",
         "StrictHostKeyChecking=no",
-        "root@%s" % host,
+        f"root@{host}",
         volutil,
         subcommand,
     ] + list(args)
@@ -81,16 +81,16 @@ def get_volume_ids(host, volume, verbose=False, volutil=None):
             stderr=get_err_stream(verbose),
         ).decode(sys.stdout.encoding)
     except subprocess.CalledProcessError:
-        raise OSError("Couldn't get volume info for %s" % volume)
+        raise OSError(f"Couldn't get volume info for {volume}")
 
     match = re.search("^id = ([0-9a-f]+)", info, re.MULTILINE)
     if match is None:
-        raise ValueError("Couldn't find volume ID for %s" % volume)
+        raise ValueError(f"Couldn't find volume ID for {volume}")
     volume_id = match.group(1)
 
     match = re.search(", backupId = ([0-9a-f]+)", info)
     if match is None:
-        raise ValueError("Couldn't find backup ID for %s" % volume)
+        raise ValueError(f"Couldn't find backup ID for {volume}")
     backup_id = match.group(1)
 
     return volume_id, backup_id
@@ -152,7 +152,7 @@ def update_dir_from_tar(tar, root_dir):
         elif entry.type == tarfile.SYMTYPE:
             entry_stat_type = stat.S_IFLNK
         else:
-            raise ValueError("Unexpected file type %d" % entry.type)
+            raise ValueError(f"Unexpected file type {entry.type}")
 
         # Check for existing file
         path = build_path(root_dir, entry.name)
@@ -213,9 +213,10 @@ def update_dir_from_tar(tar, root_dir):
         if entry.isfile() or entry.isdir():
             # rsync --fake-super compatible:
             # octal_mode_with_type major,minor uid:gid
+            mode = entry_stat_type | entry.mode
             attrs.update(
                 ATTR_STAT,
-                "%o 0,0 %d:%d" % (entry_stat_type | entry.mode, entry.uid, entry.gid),
+                f"{mode:o} 0,0 {entry.uid}:{entry.gid}",
             )
         # mtime.  Directories will be updated later, and hardlinks were
         # updated with the primary.
@@ -255,7 +256,7 @@ def update_dir(
         raise DumpError(str(e))
 
     if proc.wait():
-        raise DumpError("Coda dump returned %d" % proc.returncode)
+        raise DumpError(f"Coda dump returned {proc.returncode}")
     return valid_paths
 
 

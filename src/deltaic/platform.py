@@ -58,4 +58,5 @@ def punch(fh, offset, length):
     elif _fallocate(
         fh.fileno(), _FALLOC_FL_PUNCH_HOLE | _FALLOC_FL_KEEP_SIZE, offset, length
     ):
-        raise OSError("fallocate() failed: %s" % os.strerror(get_errno()))
+        error_string = os.strerror(get_errno())
+        raise OSError(f"fallocate() failed: {error_string}")

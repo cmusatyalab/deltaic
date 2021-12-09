@@ -77,4 +77,4 @@ def askpass(prompt):
     elif "Password" in prompt:
         print(os.environ["DT_ASKPASS_PASS"])
     else:
-        raise click.UsageError("Unrecognized prompt: %s" % prompt)
+        raise click.UsageError(f"Unrecognized prompt: {prompt}")

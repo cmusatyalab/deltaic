@@ -89,7 +89,7 @@ class Task:
         def timestamp():
             return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        sys.stdout.write("Starting %s\n" % name)
+        sys.stdout.write(f"Starting {name}\n")
         command = get_cmdline_for_subcommand(args)
         with contextlib.ExitStack() as stack:
             null = stack.enter_context(open("/dev/null", "r+"))
@@ -97,8 +97,8 @@ class Task:
             out = stack.enter_context(open(log_base + ".out", "a"))
 
             for fh in out, err:
-                fh.write("# Starting task at %s\n" % timestamp())
-                fh.write("# %s\n" % " ".join(command))
+                fh.write(f"# Starting task at {timestamp()}\n")
+                fh.write(f"# {' '.join(command)}\n")
                 fh.flush()
             ret = subprocess.call(
                 command,
@@ -110,10 +110,10 @@ class Task:
             )
             for fh in out, err:
                 if ret < 0:
-                    fh.write("# Task died on signal %d\n" % -ret)
+                    fh.write(f"# Task died on signal {-ret}\n")
                 else:
-                    fh.write("# Task exited with status %d\n" % ret)
-                fh.write("# Ending task at %s\n\n" % timestamp())
+                    fh.write(f"# Task exited with status {ret}\n")
+                fh.write(f"# Ending task at {timestamp()}\n\n")
 
         if ret:
             with open(log_base + ".err") as err:
@@ -150,11 +150,9 @@ class Task:
                     excerpt_lines.insert(0, "[...]")
                 # Serialize
                 excerpt = "\n".join(" " * 3 + line for line in excerpt_lines)
-            sys.stderr.write(
-                "Failed:  {}\n   {}\n{}\n".format(name, " ".join(command), excerpt)
-            )
+            sys.stderr.write(f"Failed:  {name}\n   {' '.join(command)}\n{excerpt}\n")
 
-        sys.stdout.write("Ending   %s\n" % name)
+        sys.stdout.write(f"Ending   {name}\n")
         return ret == 0
 
 
@@ -186,5 +184,5 @@ class Source:
         raise NotImplementedError
 
     def get_backup_task(self):
-        thread_count = self._settings.get("%s-workers" % self.LABEL, 1)
+        thread_count = self._settings.get(f"{self.LABEL}-workers", 1)
         return _SourceBackupTask(self._settings, thread_count, self.get_units())

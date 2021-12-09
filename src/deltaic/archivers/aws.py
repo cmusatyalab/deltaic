@@ -182,7 +182,7 @@ class AWSArchiver(Archiver):
 
         # Parse item into timeslots
         timeslot_attrs = [
-            "bandwidth-%s" % (cur_slot + timedelta(hours=n)).isoformat()
+            f"bandwidth-{(cur_slot + timedelta(hours=n)).isoformat()}"
             for n in range(self.BILLING_RETRIEVAL_HOURS)
         ]
         timeslot_bw = [int(data.get(k, 0)) for k in timeslot_attrs]
@@ -368,15 +368,13 @@ class AWSArchiver(Archiver):
 
         # Give the user a chance to cancel before they are charged.
         print(
-            "Going to retrieve {} of data at {}/hour.".format(
-                humanize_size(total_size),
-                humanize_size(max_rate),
-            ),
+            f"Going to retrieve {humanize_size(total_size)} of data "
+            f"at {humanize_size(max_rate)}/hour.",
             file=sys.stderr,
         )
         for remaining in range(self.RETRIEVAL_DELAY, -1, -1):
             print(
-                "\rStarting in %d seconds. " % remaining,
+                f"\rStarting in {remaining} seconds. ",
                 end="",
                 file=sys.stderr,
                 flush=True,
@@ -411,7 +409,7 @@ class AWSArchiver(Archiver):
                     "at",
                     state.offset,
                 )
-                byte_range = "%d-%d" % (state.offset, state.offset + request_size - 1)
+                byte_range = f"{state.offset}-{state.offset + request_size - 1}"
                 response = self._vault.layer1.initiate_job(
                     self._vault.name,
                     {
@@ -482,9 +480,10 @@ class AWSArchiver(Archiver):
         }
 
         # Walk archives in domain
-        qstr = "select `aws-aid` from `%s` where `aws-aid` is not null" % (
-            self._domain.name
+        qstr = (
+            f"select `aws-aid` from `{self._domain.name}` where `aws-aid` is not null"
         )
+
         for res in self._domain.select(qstr, consistent_read=True):
             # Ignore archives missing from vault inventory, since the
             # inventory can be up to 24 hours stale.

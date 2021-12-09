@@ -53,7 +53,7 @@ def rbd_query(pool, *args):
     try:
         out = subprocess.check_output(cmd).decode(sys.stdout.encoding)
     except subprocess.CalledProcessError as e:
-        raise OSError("rbd query returned %d" % e.returncode)
+        raise OSError(f"rbd query returned {e.returncode}")
     return json.loads(out)
 
 
@@ -69,18 +69,18 @@ def get_image_for_snapshot(pool, snapshot):
     for cur in rbd_pool_info(pool):
         if cur.get("snapshot") == snapshot:
             return cur["image"]
-    raise KeyError("Couldn't locate snapshot %s" % snapshot)
+    raise KeyError(f"Couldn't locate snapshot {snapshot}")
 
 
 def get_snapid_for_snapshot(pool, image, snapshot):
     for cur in rbd_list_snapshots(pool, image):
         if cur["name"] == snapshot:
             return cur["id"]
-    raise KeyError("Couldn't locate snapshot %s" % snapshot)
+    raise KeyError(f"Couldn't locate snapshot {snapshot}")
 
 
 def create_snapshot(pool, image):
-    snapshot = "backup-%s" % uuid.uuid1()
+    snapshot = f"backup-{uuid.uuid1()}"
     rbd_exec(pool, "snap", "create", "--image", image, "--snap", snapshot)
     return snapshot
 
@@ -179,7 +179,7 @@ class ScrubbingFile(LazyWriteFile):
             input_buf = buf[start : start + count]
             if disk_buf != input_buf:
                 self._fh.seek(-count, 1)
-                print("Fixing data mismatch at %d" % (self._fh.tell()), file=sys.stderr)
+                print(f"Fixing data mismatch at {self._fh.tell()}", file=sys.stderr)
                 super(LazyWriteFile, self).write(input_buf)
             start += count
 
@@ -259,9 +259,9 @@ def unpack_diff(ifh, ofh, verbose=True):
                 raise OSError("Expected EOF, didn't find it")
             break
         else:
-            raise ValueError("Unknown record type: %s" % type)
+            raise ValueError(f"Unknown record type: {type}")
     if verbose:
-        print("%d bytes written, %d total" % (total_changed, total_size))
+        print(f"{total_changed} bytes written, {total_size} total")
 
 
 def fetch_snapshot(pool, image, snapshot, path):
@@ -272,7 +272,7 @@ def fetch_snapshot(pool, image, snapshot, path):
         with LazyWriteFile(path, create=True) as ofh:
             unpack_diff(proc.stdout, ofh)
         if proc.wait():
-            raise OSError("Export returned %d" % proc.returncode)
+            raise OSError(f"Export returned {proc.returncode}")
         XAttrs(path).update(ATTR_SNAPSHOT, snapshot)
     except Exception:
         os.unlink(path)
@@ -284,7 +284,7 @@ def scrub_snapshot(pool, image, snapshot, path):
     with ScrubbingFile(path) as ofh:
         unpack_diff(proc.stdout, ofh, verbose=False)
     if proc.wait():
-        raise OSError("Export returned %d" % proc.returncode)
+        raise OSError(f"Export returned {proc.returncode}")
 
 
 def fetch_image(pool, image, path):
@@ -310,7 +310,7 @@ def make_patch(pool, image, path):
         with open(pending_path, "wb") as fh:
             proc = export_diff(pool, image, new_snapshot, basis=old_snapshot, fh=fh)
         if proc.wait():
-            raise OSError("Export returned %d" % proc.returncode)
+            raise OSError(f"Export returned {proc.returncode}")
         attrs.update(ATTR_PENDING_SNAPSHOT, new_snapshot)
     except Exception:
         try_unlink(pending_path)

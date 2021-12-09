@@ -58,12 +58,10 @@ DEFAULT_CREDENTIALS_FILE = "deltaic-googledrive-credentials.json"
 
 def foreverholdyourpeace(message, delay=10, file=sys.stdout):
     for remaining in range(delay, -1, -1):
-        print(
-            "\r%s in %d seconds. " % (message, remaining), end="", file=file, flush=True
-        )
+        print(f"\r{message} in {remaining} seconds. ", end="", file=file, flush=True)
         if remaining:
             time.sleep(1)
-    print("\r%s.                 " % message, file=file)
+    print(f"\r{message}.                 ", file=file)
 
 
 def _default_drive_credentials_path(settings):
@@ -113,9 +111,7 @@ def auth(config):
 
     # write credentials to file
     credentials_file = _default_drive_credentials_path(settings)
-    foreverholdyourpeace(
-        "writing credentials to %s" % credentials_file, file=sys.stderr
-    )
+    foreverholdyourpeace(f"writing credentials to {credentials_file}", file=sys.stderr)
 
     os.makedirs(os.path.dirname(credentials_file))
     storage = Storage(credentials_file)
@@ -155,7 +151,7 @@ def rm(config, fileid):
     service = _get_drive_service(settings)
 
     result = service.files().get(fileId=fileid).execute()
-    foreverholdyourpeace("Deleting {} ({})".format(result["title"], fileid))
+    foreverholdyourpeace(f"Deleting {result['title']} ({fileid})")
     service.files().delete(fileId=fileid).execute()
 
 
@@ -211,7 +207,7 @@ class DriveArchiver(Archiver):
 
     def _list_folder(self, folder, q=None):
         """Get list of all files stored in a folder"""
-        query = ["'%s' in parents" % folder]
+        query = [f"'{folder}' in parents"]
         if q is not None:
             query.extend(q)
         param = {"q": " and ".join(query)}
@@ -231,7 +227,7 @@ class DriveArchiver(Archiver):
             "appfolder",
             q=[
                 "mimeType = 'application/vnd.google-apps.folder'",
-                "title = '%s'" % set_name,
+                f"title = '{set_name}'",
             ],
         )
         try:
@@ -328,7 +324,7 @@ class DriveArchiver(Archiver):
     def upload_archive(self, set_name, archive_name, metadata, local_path):
         set_id = self._find_set_id(set_name)
         if not set_id:
-            raise ValueError("Set folder for '%s' missing" % set_name)
+            raise ValueError(f"Set folder for '{set_name}' missing")
 
         size = os.path.getsize(local_path)
         parts = ((size - 1) // self.MAX_FILESIZE) + 1 or 1
@@ -432,18 +428,14 @@ class DriveArchiver(Archiver):
             int(part["fileSize"]) for _, _, archive in archives for part in archive
         )
         foreverholdyourpeace(
-            "Going to retrieve %s of data" % humanize_size(total_size), file=sys.stderr
+            f"Going to retrieve {humanize_size(total_size)} of data", file=sys.stderr
         )
 
         for archive_name, archive_path, archive in archives:
             archive_size = sum(int(part["fileSize"]) for part in archive)
             print(
-                "Retrieving %s (%d bytes/%d part(s))"
-                % (
-                    archive_name,
-                    archive_size,
-                    len(archive),
-                )
+                f"Retrieving {archive_name} "
+                f"({archive_size} bytes/{len(archive)} part(s))"
             )
 
             # pull archive metadata from first part

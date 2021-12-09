@@ -75,7 +75,7 @@ def radosgw_admin(*args):
             ["radosgw-admin", "--format=json"] + list(args)
         ).decode(sys.stdout.encoding)
     except subprocess.CalledProcessError as e:
-        raise OSError("radosgw-admin returned %d" % e.returncode)
+        raise OSError(f"radosgw-admin returned {e.returncode}")
     return json.loads(out)
 
 
@@ -106,7 +106,7 @@ def add_type_code(path, code):
 
 def split_type_code(path):
     if path[-2] != "_":
-        raise ValueError("Path has no type code: %s" % path)
+        raise ValueError(f"Path has no type code: {path}")
     return path[:-2], path[-1]
 
 
@@ -126,7 +126,7 @@ def path_to_key_name(root_dir, path):
     for component in components_in[:-1]:
         component, code = split_type_code(component)
         if code != "d":
-            raise ValueError("Path element missing directory type code: %s" % component)
+            raise ValueError(f"Path element missing directory type code: {component}")
         components_out.append(component)
     component, _ = split_type_code(components_in[-1])
     components_out.append(component)
@@ -274,7 +274,7 @@ def sync_bucket(server, bucket_name, root_dir, workers, scrub, secure):
 
     # Collect garbage
     def handle_err(err):
-        warn("Couldn't list directory: %s", err)
+        warn(f"Couldn't list directory: {err}")
 
     for dirpath, _, filenames in os.walk(root_dir, topdown=False, onerror=handle_err):
         for filename in filenames:
@@ -297,15 +297,13 @@ def sync_bucket(server, bucket_name, root_dir, workers, scrub, secure):
                     if delete and os.stat(filepath).st_mtime > start_time:
                         # Probably a failure to non-destructively encode the
                         # key name in the filesystem path.
-                        warn(
-                            "Warning: Deleting file that we just created: %s", filepath
-                        )
+                        warn(f"Warning: Deleting file that we just created: {filepath}")
             if delete:
                 print("Deleting", filepath)
                 try:
                     os.unlink(filepath)
                 except OSError as e:
-                    warn("Couldn't unlink: %s", e)
+                    warn(f"Couldn't unlink: {e}")
 
         with contextlib.suppress(OSError):
             os.rmdir(dirpath)
@@ -327,7 +325,7 @@ def upload_pool_init(root_dir_, server, bucket_name, secure):
 def get_owner_name(acl_xml):
     return (
         ET.fromstring(acl_xml)
-        .find("{{{ns}}}Owner/{{{ns}}}ID".format(ns=S3_NAMESPACE))
+        .find(f"{{{S3_NAMESPACE}}}Owner/{{{S3_NAMESPACE}}}ID")
         .text
     )
 
@@ -373,7 +371,7 @@ def restore_bucket(root_dir, server, dest_bucket_name, force, secure, workers):
     # Check for valid bucket dir
     bucket_acl_path = key_name_to_path(root_dir, "bucket", "A")
     if not os.path.exists(bucket_acl_path):
-        raise OSError("No backups at %s" % root_dir)
+        raise OSError(f"No backups at {root_dir}")
 
     # Get bucket ACL and owner
     with open(bucket_acl_path) as fh:

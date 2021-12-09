@@ -47,7 +47,7 @@ class Snapshot:
         return str(self.name)
 
     def __repr__(self):
-        return "Snapshot(%s)" % repr(self.name)
+        return f"Snapshot({self.name!r})"
 
     def __cmp__(self, other):
         if not isinstance(other, self.__class__):
@@ -73,12 +73,12 @@ class PhysicalSnapshot(Snapshot):
 
     def __init__(self, vg, name):
         if "/" in name:
-            raise ValueError("Invalid snapshot name: %s" % name)
+            raise ValueError(f"Invalid snapshot name: {name}")
         Snapshot.__init__(self, name)
         self.vg = vg
 
     def __repr__(self):
-        return f"PhysicalSnapshot({repr(self.vg)}, {repr(self.name)})"
+        return f"PhysicalSnapshot({self.vg!r}, {self.name!r})"
 
     def __lt__(self, other):
         return self.vg < other.vg or self.vg == other.vg and self.name < other.name
@@ -110,7 +110,7 @@ class PhysicalSnapshot(Snapshot):
         with open("/dev/null", "r+") as null:
             # Give up eventually in case test keeps failing
             for n in range(1, 100):
-                snapshot_lv = "%s-%d" % (today, n)
+                snapshot_lv = f"{today}-{n}"
                 ret = subprocess.call(
                     ["sudo", "lvs", f"{vg}/{snapshot_lv}"],
                     stdout=null,
@@ -182,7 +182,7 @@ class StorageStatus:
                 ["sudo", "lvs", "--noheadings", "-o", "pool_lv", f"{vg}/{lv}"],
             ).decode(sys.stdout.encoding)
         except subprocess.CalledProcessError as e:
-            raise OSError("Couldn't retrieve pool LV: lvs returned %d" % e.returncode)
+            raise OSError(f"Couldn't retrieve pool LV: lvs returned {e.returncode}")
 
         pool_lv = out.strip()
         if not pool_lv:
@@ -204,7 +204,7 @@ class StorageStatus:
                 ],
             ).decode(sys.stdout.encoding)
         except subprocess.CalledProcessError as e:
-            raise OSError("Couldn't examine pool LV: lvs returned %d" % e.returncode)
+            raise OSError(f"Couldn't examine pool LV: lvs returned {e.returncode}")
 
         vals = [float(v) for v in out.split()]
         data_size, data_pct, meta_size, meta_pct = vals
@@ -232,7 +232,8 @@ class StorageStatus:
             else:
                 value = str(value) + 4 * " "
             if pct < pct_threshold:
-                print("%-25s %14s (%4.1f%%)" % (label + ":", value, pct))
+                labelc = label + ":"
+                print(f"{labelc:<25} {value:>14} ({pct:4.1f}%)")
                 printed = True
         return printed
 

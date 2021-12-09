@@ -148,7 +148,7 @@ def update_issues(repo, root_dir, scrub=False):
     valid_paths.add(issue_dir)
     issue_iter = cond_iter(issue_dir, repo.iter_issues, scrub=scrub, state="all")
     for issue in issue_iter:
-        path = os.path.join(issue_dir, "%d.json" % issue.number)
+        path = os.path.join(issue_dir, f"{issue.number}.json")
         valid_paths.add(path)
         with contextlib.suppress(OSError):
             # We need to make additional requests to get comments and events.
@@ -216,7 +216,7 @@ def update_issues(repo, root_dir, scrub=False):
             "title": milestone.title,
             "updated_at": timestamp_str(milestone.updated_at),
         }
-        path = os.path.join(milestone_dir, "%d.json" % milestone.number)
+        path = os.path.join(milestone_dir, f"{milestone.number}.json")
         valid_paths.add(path)
         write_json(path, info, milestone.updated_at)
     if not milestone_iter.skipped:
@@ -249,7 +249,7 @@ def update_comments(repo, root_dir, scrub=False):
         )
     if not comment_iter.skipped:
         for commit_id in commit_comments:
-            path = os.path.join(comment_dir, "%s.json" % commit_id)
+            path = os.path.join(comment_dir, f"{commit_id}.json")
             valid_paths.add(path)
             write_json(path, commit_comments[commit_id], commit_timestamps[commit_id])
         gc_directory_tree(comment_dir, valid_paths, gc_report)
@@ -266,7 +266,7 @@ def update_releases(repo, root_dir, scrub=False):
             release_dir = make_dir_path(releases_dir, release.tag_name)
         else:
             # Draft release that hasn't been tagged yet
-            release_dir = make_dir_path(releases_dir, "untagged-%d" % release.id)
+            release_dir = make_dir_path(releases_dir, f"untagged-{release.id}")
 
         # Metadata
         info = {

@@ -8,3 +8,6 @@ extend-ignore = E203
 
 per-file-ignores =
     src/deltaic/template.py: E501
+
+# flake8-use-fstring
+format-greedy = 1

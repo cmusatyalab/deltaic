@@ -69,7 +69,7 @@ def run_rsync_with_fallback(cmd):
         cmd.remove("--xattrs")
         ret = run_rsync(cmd)
     if ret not in (0, 24):
-        raise OSError("rsync failed with code %d" % ret)
+        raise OSError(f"rsync failed with code {ret}")
 
 
 def backup_host(
@@ -92,9 +92,7 @@ def backup_host(
         "--rsh=ssh -o BatchMode=yes -o StrictHostKeyChecking=no",
     ]
     args.extend(["--exclude=" + r for r in exclude])
-    args.extend(
-        ["{}@{}:{}".format(user, host, mount.rstrip("/") or "/") for mount in mounts]
-    )
+    args.extend([f"{user}@{host}:{mount.rstrip('/') or '/'}" for mount in mounts])
     args.append(root_dir.rstrip("/"))
     if scrub:
         args.append("--checksum")
@@ -111,7 +109,7 @@ def restore_host(
     source = source.rstrip("/")
     if os.path.isdir(source):
         source += "/"
-    dest = "{}@{}:{}/".format(user, dest_host, dest_dir.rstrip("/"))
+    dest = f"{user}@{dest_host}:{dest_dir.rstrip('/')}/"
 
     if not coda:
         # Complain if remote superuser activities (-ogD) fail
