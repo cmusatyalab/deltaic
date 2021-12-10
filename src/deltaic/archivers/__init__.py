@@ -599,8 +599,8 @@ pass_archiver = click.make_pass_decorator(Archiver)
 @archive.command()
 @click.option("-r", "--resume", is_flag=True, help="resume previous run")
 @click.argument("snapshot", required=False)
-@pass_config
 @pass_archiver
+@pass_config
 def run(config, archiver, resume, snapshot):
     """create and upload an offsite archive for every unit
 
@@ -746,8 +746,8 @@ def unpack(config, destdir, file_):
 
 
 @archive.command()
-@pass_config
 @pass_archiver
+@pass_config
 def prune(config, archiver):
     """delete old offsite archives"""
     settings = config["settings"]
@@ -765,8 +765,8 @@ def resync(archiver):
 @click.argument("snapshot")
 @click.argument("mountpoint")
 @click.argument("unit")
-@pass_config
 @pass_archiver
+@pass_config
 def unit(config, archiver, snapshot, mountpoint, unit):
     """low-level command to upload a single offsite archive
 
