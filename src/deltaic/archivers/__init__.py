@@ -27,7 +27,7 @@ from collections import deque
 from hashlib import sha256
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryFile, mkdtemp
-from typing import IO
+from typing import IO, Dict, List, Optional
 
 import click
 from pkg_resources import iter_entry_points
@@ -601,7 +601,7 @@ pass_archiver = click.make_pass_decorator(Archiver)
 @click.argument("snapshot", required=False)
 @pass_archiver
 @pass_config
-def run(config, archiver, resume, snapshot):
+def run(config: Dict, archiver: Archiver, resume: bool, snapshot: str):
     """create and upload an offsite archive for every unit
 
     Will archive the latest snapshot unless a specific SNAPSHOT has been
@@ -613,27 +613,27 @@ def run(config, archiver, resume, snapshot):
         raise click.UsageError("Cannot specify snapshot with --resume")
 
     elif snapshot is not None:
-        for snapshot in PhysicalSnapshot.list():
-            if snapshot.name == snapshot:
+        for chosen_snapshot in PhysicalSnapshot.list():
+            if chosen_snapshot.name == snapshot:
                 break
         else:
             raise click.UsageError("No such snapshot")
-        print("Archiving selected snapshot", snapshot)
+        print("Archiving selected snapshot", chosen_snapshot)
 
     elif resume:
         set = SnapshotArchiveSet.list(archiver)[-1]
-        snapshot = set.snapshot
+        chosen_snapshot = set.snapshot
         if set.complete:
-            raise click.UsageError(f"{snapshot} already completely archived")
-        print("Resuming archive of snapshot", snapshot)
+            raise click.UsageError(f"{chosen_snapshot} already completely archived")
+        print("Resuming archive of snapshot", chosen_snapshot)
 
     else:
-        snapshot = PhysicalSnapshot.list()[-1]
-        print("Archiving snapshot", snapshot)
+        chosen_snapshot = PhysicalSnapshot.list()[-1]
+        print("Archiving snapshot", chosen_snapshot)
 
-    snapshot = snapshot.get_physical(settings)
+    physical_snapshot = chosen_snapshot.get_physical(settings)
     with lockfile(settings, "archive"):
-        if not archive_snapshot(config, archiver, snapshot):
+        if not archive_snapshot(config, archiver, physical_snapshot):
             print(
                 "Archiving failed for some units.  "
                 "Not marking archive set complete.",
@@ -645,7 +645,7 @@ def run(config, archiver, resume, snapshot):
 
 @archive.command()
 @pass_archiver
-def cost(archiver):
+def cost(archiver: Archiver):
     """calculate storage costs"""
     archiver.report_cost()
 
@@ -654,7 +654,7 @@ def cost(archiver):
 @click.option("-s", "--sets", is_flag=True, help="list archive sets")
 @click.argument("set_", required=False)
 @pass_archiver
-def ls(archiver, sets, set_):
+def ls(archiver: Archiver, sets: bool, set_: Optional[str]):
     """list existing offsite archives
 
     Optionally specify which archive SET to examine
@@ -701,7 +701,13 @@ def ls(archiver, sets, set_):
 )
 @click.argument("unit", required=True, nargs=-1)
 @pass_archiver
-def retrieve(archiver, max_rate, snapshot, destdir, unit):
+def retrieve(
+    archiver: Archiver,
+    max_rate: Optional[float],
+    snapshot: str,
+    destdir: Path,
+    unit: List[str],
+):
     """download offsite archives to the specified directory"""
     set = SnapshotArchiveSet(archiver, Snapshot(snapshot))
     archives = [set.get_archive(unit_) for unit_ in unit]
@@ -729,7 +735,7 @@ def retrieve(archiver, max_rate, snapshot, destdir, unit):
 )
 @click.argument("file_", required=True, nargs=-1)
 @pass_config
-def unpack(config, destdir, file_):
+def unpack(config: Dict, destdir: Path, file_: List[str]):
     """unpack downloaded archives to the specified directory
 
     To avoid repeated passphrase prompts, ensure gpg-agent is running in your
@@ -739,7 +745,7 @@ def unpack(config, destdir, file_):
 
     packer = ArchivePacker(settings)
 
-    destdir.mkdir(parents=True, exists_ok=True)
+    destdir.mkdir(parents=True, exist_ok=True)
 
     for filename in file_:
         packer.unpack(filename, destdir)
@@ -748,7 +754,7 @@ def unpack(config, destdir, file_):
 @archive.command()
 @pass_archiver
 @pass_config
-def prune(config, archiver):
+def prune(config: Dict, archiver: Archiver):
     """delete old offsite archives"""
     settings = config["settings"]
     prune_archives(settings, archiver)
@@ -756,7 +762,7 @@ def prune(config, archiver):
 
 @archive.command()
 @pass_archiver
-def resync(archiver):
+def resync(archiver: Archiver):
     """resynchronize index with data"""
     archiver.resync()
 
@@ -767,7 +773,13 @@ def resync(archiver):
 @click.argument("unit")
 @pass_archiver
 @pass_config
-def unit(config, archiver, snapshot, mountpoint, unit):
+def unit(
+    config: Dict,
+    archiver: Archiver,
+    snapshot: str,
+    mountpoint: str,
+    unit: str,
+):
     """low-level command to upload a single offsite archive
 
     MOUNTPOINT is the current mountpoint of the specified snapshot
