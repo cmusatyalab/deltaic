@@ -39,6 +39,7 @@ CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 
 @with_plugins(iter_entry_points("deltaic.lowlevel"))
 @click.group(context_settings=CONTEXT_SETTINGS)
+@click.version_option()
 @click.option(
     "-c",
     "--config-file",
