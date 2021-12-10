@@ -69,18 +69,18 @@ def volutil_cmd(host, subcommand, args=(), volutil=None):
 
 
 def get_err_stream(verbose):
-    if verbose:
-        return None
-    else:
-        return open("/dev/null", "r+")
+    return None if verbose else subprocess.DEVNULL
 
 
 def get_volume_ids(host, volume, verbose=False, volutil=None):
     try:
-        info = subprocess.check_output(
+        info = subprocess.run(
             volutil_cmd(host, "info", [volume], volutil=volutil),
+            stdout=subprocess.PIPE,
             stderr=get_err_stream(verbose),
-        ).decode(sys.stdout.encoding)
+            encoding=sys.stdout.encoding,
+            check=True,
+        ).stdout
     except subprocess.CalledProcessError:
         raise OSError(f"Couldn't get volume info for {volume}")
 
@@ -99,15 +99,17 @@ def get_volume_ids(host, volume, verbose=False, volutil=None):
 
 def refresh_backup_volume(host, volume, verbose=False, volutil=None):
     volume_id, _ = get_volume_ids(host, volume, verbose, volutil=volutil)
-    subprocess.check_call(
+    subprocess.run(
         volutil_cmd(host, "lock", [volume_id], volutil=volutil),
         stdout=get_err_stream(verbose),
         stderr=get_err_stream(verbose),
+        check=True,
     )
-    subprocess.check_call(
+    subprocess.run(
         volutil_cmd(host, "backup", [volume_id], volutil=volutil),
         stdout=get_err_stream(verbose),
         stderr=get_err_stream(verbose),
+        check=True,
     )
 
 
@@ -243,12 +245,12 @@ def update_dir(
         codadump2tar = "codadump2tar"
     args = ["-i", "-1"] if incremental else []
     args.extend([backup_id, "|", codadump2tar, "-rn", "."])
-    with open("/dev/null", "r+") as null:
-        proc = subprocess.Popen(
-            volutil_cmd(host, "dump", args, volutil=volutil),
-            stdout=subprocess.PIPE,
-            stderr=null,
-        )
+
+    proc = subprocess.Popen(
+        volutil_cmd(host, "dump", args, volutil=volutil),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
 
     try:
         tar = tarfile.open(fileobj=proc.stdout, mode="r|")
@@ -307,9 +309,10 @@ def sync_backup_volume(
 
         gc_directory_tree(root_dir, valid_paths, report)
 
-    subprocess.check_call(
+    subprocess.run(
         volutil_cmd(host, "ancient", [backup_id], volutil=volutil),
         stderr=get_err_stream(verbose),
+        check=True,
     )
     root_xattrs.update(ATTR_INCREMENTAL, "true")
 

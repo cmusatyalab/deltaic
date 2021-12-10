@@ -42,7 +42,7 @@ def remote_command(host, command, user="root"):
         command,
     ]
     print(" ".join(args))
-    subprocess.check_call(args)
+    subprocess.run(args, check=True)
 
 
 def run_rsync(cmd):

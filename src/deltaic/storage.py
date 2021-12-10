@@ -88,69 +88,73 @@ class PhysicalSnapshot(Snapshot):
 
     @classmethod
     def list(cls):
-        try:
-            out = subprocess.check_output(
-                ["sudo", "lvs", "--noheadings", "-o", "vg_name,lv_name", "@" + cls.TAG],
-            ).decode(sys.stdout.encoding)
-        except subprocess.CalledProcessError:
+        ret = subprocess.run(
+            ["sudo", "lvs", "--noheadings", "-o", "vg_name,lv_name", "@" + cls.TAG],
+            stdout=subprocess.PIPE,
+            encoding=sys.stdout.encoding,
+        )
+        if ret.returncode != 0:
             raise OSError("Couldn't list snapshot LVs")
 
-        ret = []
-        for line in out.split("\n"):
+        snapshots = []
+        for line in ret.stdout.split("\n"):
             if not line:
                 continue
             vg, lv = line.split()
-            ret.append(cls(vg, lv))
-        return sorted(ret)
+            snapshots.append(cls(vg, lv))
+        return sorted(snapshots)
 
     @classmethod
     def create(cls, settings, verbose=False):
         vg, lv = cls._get_backup_vg_lv(settings)
         today = date.today().strftime(cls.DATE_FMT)
-        with open("/dev/null", "r+") as null:
-            # Give up eventually in case test keeps failing
-            for n in range(1, 100):
-                snapshot_lv = f"{today}-{n}"
-                ret = subprocess.call(
-                    ["sudo", "lvs", f"{vg}/{snapshot_lv}"],
-                    stdout=null,
-                    stderr=null,
-                )
-                if ret:
-                    break
-            else:
-                raise OSError("Couldn't locate unused snapshot LV")
-            subprocess.check_call(
-                [
-                    "sudo",
-                    "lvcreate",
-                    "-s",
-                    f"{vg}/{lv}",
-                    "-p",
-                    "r",
-                    "-n",
-                    snapshot_lv,
-                    "--addtag",
-                    cls.TAG,
-                ],
-                stdin=null,
-                stdout=None if verbose else null,
+
+        # Give up eventually in case test keeps failing
+        for n in range(1, 100):
+            snapshot_lv = f"{today}-{n}"
+            ret = subprocess.run(
+                ["sudo", "lvs", f"{vg}/{snapshot_lv}"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
+            if ret.returncode:
+                break
+        else:
+            raise OSError("Couldn't locate unused snapshot LV")
+
+        subprocess.run(
+            [
+                "sudo",
+                "lvcreate",
+                "-s",
+                f"{vg}/{lv}",
+                "-p",
+                "r",
+                "-n",
+                snapshot_lv,
+                "--addtag",
+                cls.TAG,
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=None if verbose else subprocess.DEVNULL,
+            check=True,
+        )
         return cls(vg, snapshot_lv)
 
     def remove(self, verbose=False):
-        with open("/dev/null", "r+") as null:
-            subprocess.check_call(
-                ["sudo", "lvremove", "--force", f"{self.vg}/{self.name}"],
-                stdin=null,
-                stdout=None if verbose else null,
-            )
+        subprocess.run(
+            ["sudo", "lvremove", "--force", f"{self.vg}/{self.name}"],
+            stdin=subprocess.DEVNULL,
+            stdout=None if verbose else subprocess.DEVNULL,
+            check=True,
+        )
 
     def mount(self, mountpoint):
-        subprocess.check_call(
-            ["sudo", "lvchange", "-a", "y", "-K", f"{self.vg}/{self.name}"]
+        subprocess.run(
+            ["sudo", "lvchange", "-a", "y", "-K", f"{self.vg}/{self.name}"],
+            check=True,
         )
-        subprocess.check_call(
+        subprocess.run(
             [
                 "sudo",
                 "mount",
@@ -158,13 +162,15 @@ class PhysicalSnapshot(Snapshot):
                 "ro",
                 f"/dev/{self.vg}/{self.name}",
                 mountpoint,
-            ]
+            ],
+            check=True,
         )
 
     def umount(self, mountpoint):
-        subprocess.check_call(["sudo", "umount", mountpoint])
+        subprocess.run(["sudo", "umount", mountpoint], check=True)
+
         # May fail if double-mounted
-        subprocess.call(["sudo", "lvchange", "-a", "n", f"{self.vg}/{self.name}"])
+        subprocess.run(["sudo", "lvchange", "-a", "n", f"{self.vg}/{self.name}"])
 
 
 class StorageStatus:
@@ -178,9 +184,12 @@ class StorageStatus:
 
         # Find pool LV
         try:
-            out = subprocess.check_output(
+            out = subprocess.run(
                 ["sudo", "lvs", "--noheadings", "-o", "pool_lv", f"{vg}/{lv}"],
-            ).decode(sys.stdout.encoding)
+                stdout=subprocess.PIPE,
+                encoding=sys.stdout.encoding,
+                check=True,
+            ).stdout
         except subprocess.CalledProcessError as e:
             raise OSError(f"Couldn't retrieve pool LV: lvs returned {e.returncode}")
 
@@ -190,7 +199,7 @@ class StorageStatus:
 
         # Get pool LV stats
         try:
-            out = subprocess.check_output(
+            out = subprocess.run(
                 [
                     "sudo",
                     "lvs",
@@ -202,7 +211,10 @@ class StorageStatus:
                     "lv_size,data_percent,lv_metadata_size,metadata_percent",
                     f"{vg}/{pool_lv}",
                 ],
-            ).decode(sys.stdout.encoding)
+                stdout=subprocess.PIPE,
+                encoding=sys.stdout.encoding,
+                check=True,
+            ).stdout
         except subprocess.CalledProcessError as e:
             raise OSError(f"Couldn't examine pool LV: lvs returned {e.returncode}")
 

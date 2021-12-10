@@ -72,13 +72,14 @@ SCRUB_ALL = 2
 
 
 def radosgw_admin(*args):
-    try:
-        out = subprocess.check_output(
-            ["radosgw-admin", "--format=json"] + list(args)
-        ).decode(sys.stdout.encoding)
-    except subprocess.CalledProcessError as e:
-        raise OSError(f"radosgw-admin returned {e.returncode}")
-    return json.loads(out)
+    ret = subprocess.run(
+        ["radosgw-admin", "--format=json"] + list(args),
+        stdout=subprocess.PIPE,
+        encoding=sys.stdout.encoding,
+    )
+    if ret.returncode != 0:
+        raise OSError(f"radosgw-admin returned {ret.returncode}")
+    return json.loads(ret.stdout)
 
 
 def get_bucket_credentials(bucket_name):

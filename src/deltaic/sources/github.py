@@ -125,21 +125,24 @@ def update_git(
     )
 
     for tries_remaining in range(GIT_ATTEMPTS - 1, -1, -1):
-        try:
-            print(" ".join(cmd))
-            subprocess.check_call(cmd, cwd=cwd, env=env)
+        print(" ".join(cmd))
+        ret = subprocess.run(cmd, cwd=cwd, env=env)
+        if ret.returncode == 0:
             break
-        except subprocess.CalledProcessError:
-            if ignore_clone_errors and not exists:
-                return
-            if not tries_remaining:
-                raise
+
+        if ignore_clone_errors and not exists:
+            return
+
+        if not tries_remaining:
+            ret.check_returncode()  # raises CalledProcessError
+
+        # sleep and try again
         time.sleep(1)
 
     if scrub:
         cmd = [git_path, "fsck", "--no-dangling", "--no-progress"]
         print(" ".join(cmd))
-        subprocess.check_call(cmd, cwd=root_dir)
+        subprocess.run(cmd, cwd=root_dir, check=True)
 
 
 def update_issues(repo, root_dir, scrub=False):

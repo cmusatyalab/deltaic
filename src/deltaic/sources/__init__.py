@@ -19,7 +19,6 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-import contextlib
 import os
 import queue
 import subprocess
@@ -90,33 +89,32 @@ class Task:
         def timestamp():
             return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        sys.stdout.write(f"Starting {name}\n")
+        start_time = timestamp()
+        sys.stdout.write(f"{start_time} Starting {name}\n")
         command = get_cmdline_for_subcommand(args)
-        with contextlib.ExitStack() as stack:
-            null = stack.enter_context(open("/dev/null", "r+"))
-            err = stack.enter_context(open(log_base + ".err", "a"))
-            out = stack.enter_context(open(log_base + ".out", "a"))
+        with open(log_base + ".err", "a") as err, open(log_base + ".out", "a") as out:
 
             for fh in out, err:
-                fh.write(f"# Starting task at {timestamp()}\n")
+                fh.write(f"# Starting task at {start_time}\n")
                 fh.write(f"# {' '.join(command)}\n")
                 fh.flush()
-            ret = subprocess.call(
+            ret = subprocess.run(
                 command,
-                stdin=null,
+                stdin=subprocess.DEVNULL,
                 stdout=out,
                 stderr=err,
                 close_fds=True,
                 env={"PYTHONUNBUFFERED": "1"},
             )
+            end_time = timestamp()
             for fh in out, err:
-                if ret < 0:
-                    fh.write(f"# Task died on signal {-ret}\n")
+                if ret.returncode < 0:
+                    fh.write(f"# Task died on signal {-ret.returncode}\n")
                 else:
-                    fh.write(f"# Task exited with status {ret}\n")
-                fh.write(f"# Ending task at {timestamp()}\n\n")
+                    fh.write(f"# Task exited with status {ret.returncode}\n")
+                fh.write(f"# Ending task at {end_time}\n\n")
 
-        if ret:
+        if ret.returncode:
             with open(log_base + ".err") as err:
                 # Read LOG_EXCERPT_INPUT_BYTES
                 err.seek(0, 2)
@@ -151,10 +149,12 @@ class Task:
                     excerpt_lines.insert(0, "[...]")
                 # Serialize
                 excerpt = "\n".join(" " * 3 + line for line in excerpt_lines)
-            sys.stderr.write(f"Failed:  {name}\n   {' '.join(command)}\n{excerpt}\n")
+            sys.stderr.write(
+                f"{end_time} Failed:  {name}\n   {' '.join(command)}\n{excerpt}\n"
+            )
 
-        sys.stdout.write(f"Ending   {name}\n")
-        return ret == 0
+        sys.stdout.write(f"{end_time} Ending   {name}\n")
+        return ret.returncode == 0
 
 
 class _SourceBackupTask(Task):

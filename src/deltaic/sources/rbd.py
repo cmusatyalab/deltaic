@@ -46,16 +46,19 @@ ATTR_SNAPID = "user.rbd.snapid"
 def rbd_exec(pool, cmd, *args):
     cmdline = ["rbd", cmd] + list(args) + ["-p", pool]
     print(" ".join(cmdline))
-    subprocess.check_call(cmdline)
+    subprocess.run(cmdline, check=True)
 
 
 def rbd_query(pool, *args):
     cmd = ["rbd"] + list(args) + ["-p", pool, "--format=json"]
-    try:
-        out = subprocess.check_output(cmd).decode(sys.stdout.encoding)
-    except subprocess.CalledProcessError as e:
-        raise OSError(f"rbd query returned {e.returncode}")
-    return json.loads(out)
+    ret = subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        encoding=sys.stdout.encoding,
+    )
+    if ret.returncode != 0:
+        raise OSError(f"rbd query returned {ret.returncode}")
+    return json.loads(ret.stdout)
 
 
 def rbd_pool_info(pool):
