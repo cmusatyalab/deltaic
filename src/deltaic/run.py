@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014-2021 Carnegie Mellon University
+# Copyright (c) 2014-2022 Carnegie Mellon University
 #
 # SPDX-License-Identifier: GPL-2.0-only
 #
@@ -18,6 +18,8 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
+
+import sys
 
 import click
 
@@ -58,4 +60,4 @@ def run(config, snapshot):
         if snapshot:
             PhysicalSnapshot.create(settings, verbose=True)
         if not success:
-            return 1
+            sys.exit(1)
