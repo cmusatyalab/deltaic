@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014-2021 Carnegie Mellon University
+# Copyright (c) 2014-2022 Carnegie Mellon University
 #
 # SPDX-License-Identifier: GPL-2.0-only
 #
@@ -114,12 +114,12 @@ def refresh_backup_volume(host, volume, verbose=False, volutil=None):
 
 
 def build_path(root_dir, path):
-    resolved_path = (Path(root_dir) / path).resolve()
+    absolute_path = Path(root_dir) / path
 
-    if not resolved_path.is_relative_to(root_dir):
+    if ".." in absolute_path.parts:
         raise ValueError(f"Attempted directory traversal: {path}")
 
-    return resolved_path
+    return absolute_path
 
 
 class TarMemberFile:
@@ -191,7 +191,7 @@ def update_dir_from_tar(tar, root_dir):
             if update_file(path, TarMemberFile(tar, entry)):
                 print("f", path)
         elif entry.issym():
-            if st is None or entry.linkname and os.readlink(path) != entry.linkname:
+            if st is None or (entry.linkname and os.readlink(path) != entry.linkname):
                 print("s", path)
                 if st is not None:
                     os.unlink(path)
@@ -223,7 +223,7 @@ def update_dir_from_tar(tar, root_dir):
             )
         # mtime.  Directories will be updated later, and hardlinks were
         # updated with the primary.
-        if entry.isfile() or entry.issym() and os.lstat(path).st_mtime != entry.mtime:
+        if (entry.isfile() or entry.issym()) and os.lstat(path).st_mtime != entry.mtime:
             lutime(path, entry.mtime)
 
         # Protect from garbage collection
