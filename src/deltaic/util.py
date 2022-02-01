@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014-2021 Carnegie Mellon University
+# Copyright (c) 2014-2022 Carnegie Mellon University
 #
 # SPDX-License-Identifier: GPL-2.0-only
 #
@@ -375,9 +375,8 @@ class XAttrs:
             return default
 
     def update(self, key, value):
-        value = value.encode("utf-8")
         if self.get(key) != value:
-            self._attrs[key] = value
+            self._attrs[key] = value.encode("utf-8")
 
     def delete(self, key):
         with contextlib.suppress(KeyError):

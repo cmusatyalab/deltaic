@@ -1,7 +1,7 @@
 #
 # Deltaic - an efficient backup system supporting multiple data sources
 #
-# Copyright (c) 2014-2021 Carnegie Mellon University
+# Copyright (c) 2014-2022 Carnegie Mellon University
 #
 # SPDX-License-Identifier: GPL-2.0-only
 #
@@ -305,7 +305,7 @@ def update_releases(repo, root_dir, scrub=False):
             if os.stat(asset_path).st_mtime != mtime:
                 os.utime(asset_path, (mtime, mtime))
             XAttrs(asset_path).update(
-                ATTR_CONTENT_TYPE, asset.content_type.encode("utf-8")
+                ATTR_CONTENT_TYPE, asset.content_type
             )
 
     # Collect garbage, if anything has changed
