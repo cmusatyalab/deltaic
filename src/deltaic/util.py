@@ -64,7 +64,7 @@ class BloomSet:
 
     def _bloom_key(self, name):
         if isinstance(name, str):
-            name = name.encode("utf-8")
+            name = name.encode(errors="xmlcharrefreplace")
         return self._bloom_salt + name
 
 
