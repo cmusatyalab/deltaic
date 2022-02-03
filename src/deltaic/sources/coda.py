@@ -191,7 +191,7 @@ def update_dir_from_tar(tar, root_dir):
             if update_file(path, TarMemberFile(tar, entry)):
                 print("f", path)
         elif entry.issym():
-            if st is None or (entry.linkname and os.readlink(path) != entry.linkname):
+            if entry.linkname and (st is None or os.readlink(path) != entry.linkname):
                 print("s", path)
                 if st is not None:
                     os.unlink(path)
@@ -223,7 +223,7 @@ def update_dir_from_tar(tar, root_dir):
             )
         # mtime.  Directories will be updated later, and hardlinks were
         # updated with the primary.
-        if (entry.isfile() or entry.issym()) and os.lstat(path).st_mtime != entry.mtime:
+        if (entry.isfile() or entry.issym()) and path.exists() and os.lstat(path).st_mtime != entry.mtime:
             lutime(path, entry.mtime)
 
         # Protect from garbage collection
