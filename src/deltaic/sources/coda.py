@@ -223,7 +223,11 @@ def update_dir_from_tar(tar, root_dir):
             )
         # mtime.  Directories will be updated later, and hardlinks were
         # updated with the primary.
-        if (entry.isfile() or entry.issym()) and path.exists() and os.lstat(path).st_mtime != entry.mtime:
+        if (
+            (entry.isfile() or entry.issym())
+            and path.exists()
+            and os.lstat(path).st_mtime != entry.mtime
+        ):
             lutime(path, entry.mtime)
 
         # Protect from garbage collection

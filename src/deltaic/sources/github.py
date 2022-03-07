@@ -304,9 +304,7 @@ def update_releases(repo, root_dir, scrub=False):
                 print("f", asset_path)
             if os.stat(asset_path).st_mtime != mtime:
                 os.utime(asset_path, (mtime, mtime))
-            XAttrs(asset_path).update(
-                ATTR_CONTENT_TYPE, asset.content_type
-            )
+            XAttrs(asset_path).update(ATTR_CONTENT_TYPE, asset.content_type)
 
     # Collect garbage, if anything has changed
     if not release_iter.skipped:

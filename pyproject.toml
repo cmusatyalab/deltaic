@@ -3,7 +3,7 @@
 
 [tool.poetry]
 name = "deltaic"
-version = "0.1.1"
+version = "0.1.2"
 description = "Efficient backup system supporting multiple data sources"
 authors = [
     "Benjamin Gilbert <bgilbert@cs.cmu.edu>",
