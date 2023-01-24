@@ -517,8 +517,11 @@ def archive_unit(config, archive, snapshot_root):
     settings = config["settings"]
     profile = settings["archivers"][archive.archiver.profile_name]
     manifest = config.get("archivers", {}).get(archive.archiver.profile_name, {})
-    compression = manifest.get(archive.unit_name, {}).get("compression")
-    if not compression:
+    unit_options = manifest.get(archive.unit_name, {})
+    if unit_options.get("skip") is not None:
+        return
+    compression = unit_options.get("compression")
+    if compression is None:
         compression = profile.get("compression", "gzip")
     spool_dir = settings["archive-spool"]
     packer = ArchivePacker(settings)
