@@ -1,0 +1,10 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+
+# derives from pyproject.toml, using the same license
+Files: poetry.lock
+Copyright: 2021-2023 Carnegie Mellon University
+License: GPL-2.0-only
+
+Files: README.md
+Copyright: 2014-2021 Carnegie Mellon University
+License: GPL-2.0-only
